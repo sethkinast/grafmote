@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.GrafRemote" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#141414</item>
+        <item name="android:textColor">#f2f2f2</item>
+        <item name="android:colorAccent">#4da3ff</item>
+    </style>
+</resources>

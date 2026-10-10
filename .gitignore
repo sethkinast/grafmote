@@ -1,0 +1,14 @@
+# Gradle
+.gradle/
+build/
+app/build/
+local.properties
+# The wrapper jar is generated via `gradle wrapper` (checked in once generated).
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio
+.idea/
+*.iml
+
+# OS
+.DS_Store

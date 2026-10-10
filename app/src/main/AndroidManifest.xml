@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Required for LAN sockets (HTTP + WebSocket + Wake-on-LAN UDP).
+         The app is LAN-only by design: it never connects anywhere except
+         the TV IPs the user configures. No ads, analytics, or cloud. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="Graf Remote"
+        android:theme="@style/Theme.GrafRemote"
+        android:usesCleartextTraffic="true"
+        android:allowBackup="true">
+        <!-- usesCleartextTraffic is required: the Samsung LAN API is plain
+             HTTP on port 8001 (http://tv-ip:8001/api/v2/). -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+    </application>
+</manifest>
