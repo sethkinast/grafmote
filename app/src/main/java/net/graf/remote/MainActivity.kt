@@ -2,6 +2,8 @@ package net.graf.remote
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -9,7 +11,6 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
@@ -20,6 +21,11 @@ import android.widget.Toast
  * cached layout, wire click listeners (taps queue until the socket opens —
  * buttons are live instantly), then connect + poll in the background.
  * No custom Application class, no ContentProviders, no DI, no Compose.
+ *
+ * Header shows each TV once (in the selector) with a three-state LED dot:
+ * green = socket open and TV on, gray = socket open but TV off/standby,
+ * red = no socket. The status line below appears only for transient messages
+ * (connecting / reconnecting / approval prompts).
  */
 class MainActivity : Activity(), TvConnection.Listener {
 
@@ -31,9 +37,12 @@ class MainActivity : Activity(), TvConnection.Listener {
     private var apps: MutableList<AppButton> = mutableListOf()
     private var current: Tv? = null
     private var power: String = "unknown"
+    private var connState: TvConnection.State = TvConnection.State.IDLE
+    private var connDetail: String = ""
     private var spinnerGuard = true
 
     private lateinit var tvSpinner: Spinner
+    private lateinit var statusDot: View
     private lateinit var statusText: TextView
     private lateinit var appsRow: LinearLayout
 
@@ -53,6 +62,7 @@ class MainActivity : Activity(), TvConnection.Listener {
         conn.listener = this
 
         tvSpinner = findViewById(R.id.tvSpinner)
+        statusDot = findViewById(R.id.statusDot)
         statusText = findViewById(R.id.statusText)
         appsRow = findViewById(R.id.appsRow)
 
@@ -62,17 +72,17 @@ class MainActivity : Activity(), TvConnection.Listener {
         key(R.id.btnLeft, "LEFT")
         key(R.id.btnRight, "RIGHT")
         key(R.id.btnOk, "ENTER")
-        // Rows
+        // Rows (power/mute are ImageButtons now — key() works on any View)
         key(R.id.btnBack, "RETURN")
         key(R.id.btnHome, "HOME")
         key(R.id.btnMute, "MUTE")
         key(R.id.btnVolUp, "VOLUP")
         key(R.id.btnVolDown, "VOLDOWN")
-        findViewById<Button>(R.id.btnPower).setOnClickListener {
-            current?.let { conn.togglePower(it, power) }
+        findViewById<View>(R.id.btnPower).setOnClickListener {
+            current?.let { conn.togglePower(it, effectivePower()) }
                 ?: toast("Add a TV first (gear icon)")
         }
-        findViewById<Button>(R.id.btnSettings).setOnClickListener {
+        findViewById<View>(R.id.btnSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
@@ -92,6 +102,9 @@ class MainActivity : Activity(), TvConnection.Listener {
         apps = store.loadApps()
         buildSpinner()
         buildAppButtons()
+        // Silent reconnect: switchTo(force=true) drops any stale socket and
+        // reconnects without any user-visible error. Any late failure callback
+        // from the old socket is sanitized to "Reconnecting…" (see renderStatus).
         val last = store.lastTvId()?.let { id -> tvs.firstOrNull { it.id == id } }
         switchTo(last ?: tvs.firstOrNull(), force = true)
         ui.post(poller)
@@ -108,7 +121,7 @@ class MainActivity : Activity(), TvConnection.Listener {
     }
 
     private fun key(viewId: Int, samsungKey: String) {
-        findViewById<Button>(viewId).setOnClickListener {
+        findViewById<View>(viewId).setOnClickListener {
             current?.let { conn.sendKey(it, samsungKey) }
                 ?: toast("Add a TV first (gear icon)")
         }
@@ -118,13 +131,16 @@ class MainActivity : Activity(), TvConnection.Listener {
         if (!force && tv?.id == current?.id) return
         current = tv
         power = "unknown"
+        connState = TvConnection.State.IDLE
+        connDetail = ""
         if (tv == null) {
             conn.selectTv(null)
-            statusText.text = "No TV configured — tap the gear to add one"
+            connDetail = "No TV configured — tap Setup to add one"
+            renderStatus()
             return
         }
         store.setLastTvId(tv.id)
-        statusText.text = "Connecting to ${tv.nick}…"
+        renderStatus()
         conn.selectTv(tv)
         conn.refreshInfo(tv) { p -> power = p }
     }
@@ -175,25 +191,76 @@ class MainActivity : Activity(), TvConnection.Listener {
 
     override fun onConnState(tv: Tv?, state: TvConnection.State, detail: String) {
         if (tv != null && tv.id != current?.id) return
-        statusText.text = when (state) {
-            TvConnection.State.OPEN -> "${tv?.nick ?: ""} · connected · TV ${powerText()}"
-            TvConnection.State.UNREACHABLE -> detail
-            else -> detail
+        val was = connState
+        connState = state
+        connDetail = detail
+        if (state == TvConnection.State.OPEN && was != TvConnection.State.OPEN) {
+            // Socket success proves the TV is on; re-run the REST poll now so
+            // the power reading genuinely refreshes on (re)connect.
+            current?.let { conn.refreshInfo(it) { p -> power = p } }
         }
+        renderStatus()
     }
 
     override fun onPower(tv: Tv?, power: String) {
         if (tv != null && tv.id != current?.id) return
         this.power = power
-        current?.let { onConnState(it, conn.currentState(), "") }
-        if (conn.currentState() == TvConnection.State.IDLE) {
-            statusText.text = "${tv?.nick ?: ""} · TV ${powerText()}"
-        }
+        renderStatus()
     }
 
-    private fun powerText() = if (power == "unknown") "may be off" else power
+    /**
+     * Effective power for the toggle + LED. A successful remote-control
+     * WebSocket connection proves the TV is on, so OPEN overrides a stale
+     * or failed ("unknown") REST poll — but an explicit REST "off" while
+     * connected still shows gray (standby edge case).
+     */
+    private fun effectivePower() =
+        if (power == "on" || connState == TvConnection.State.OPEN) "on" else power
+
+    private fun renderStatus() {
+        val dot = when {
+            connState == TvConnection.State.OPEN && power == "off" -> DOT_GRAY
+            connState == TvConnection.State.OPEN -> DOT_GREEN
+            else -> DOT_RED
+        }
+        statusDot.backgroundTintList = ColorStateList.valueOf(dot)
+
+        // Defensive second layer: raw WebSocket close codes/reasons must never
+        // reach the UI, no matter what string the connection layer passes up.
+        var detail = connDetail
+        if (detail.contains("code ", ignoreCase = true) ||
+            detail.contains("reserved", ignoreCase = true) ||
+            detail.contains("disconnected (", ignoreCase = true)
+        ) {
+            detail = "Reconnecting…"
+            connDetail = detail
+        }
+        val nick = current?.nick ?: ""
+        val msg: String? = when (connState) {
+            TvConnection.State.OPEN -> null
+            TvConnection.State.CONNECTING ->
+                detail.ifBlank { "Connecting to $nick…" }
+            TvConnection.State.WAITING_APPROVAL ->
+                detail.ifBlank { "Approve \"GrafRemote\" on the TV, then tap again" }
+            TvConnection.State.UNREACHABLE ->
+                detail.ifBlank { "TV may be off — Power still sends WoL" }
+            TvConnection.State.IDLE -> detail.ifBlank { null }
+        }
+        if (msg == null) {
+            statusText.visibility = View.GONE
+        } else {
+            statusText.visibility = View.VISIBLE
+            statusText.text = msg
+        }
+    }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    companion object {
+        private const val DOT_GREEN = 0xFF34C759.toInt()
+        private const val DOT_RED = 0xFFFF453A.toInt()
+        private const val DOT_GRAY = 0xFF8E8E93.toInt()
+    }
 }
