@@ -5,6 +5,10 @@
          The app is LAN-only by design: it never connects anywhere except
          the TV IPs the user configures. No ads, analytics, or cloud. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required for the subnet sweep: the phone's WiFi IP (via WifiManager)
+         determines which /24 to probe. Normal (non-dangerous) permission, no
+         runtime prompt; no hardware IDs are read. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Required for SSDP discovery: without a WifiManager multicast lock,
          Android's WiFi stack silently drops incoming multicast packets, so
          M-SEARCH responses never reach the app. Normal (non-multicast)
