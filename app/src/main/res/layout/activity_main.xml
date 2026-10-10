@@ -1,185 +1,263 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Flex layout: the root fills the screen and control groups share the
+     available height by weight, so there is no dead region on tall phones. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp">
 
+    <!-- Header: status LED dot + TV selector + setup + power (top-right) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="12dp">
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-        <!-- TV switcher + settings -->
-        <LinearLayout
-            android:layout_width="match_parent"
+        <View
+            android:id="@+id/statusDot"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/status_dot"
+            android:contentDescription="Connection status" />
+
+        <Spinner
+            android:id="@+id/tvSpinner"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_weight="1" />
 
-            <Spinner
-                android:id="@+id/tvSpinner"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1" />
-
-            <Button
-                android:id="@+id/btnSettings"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minWidth="56dp"
-                android:text="Setup" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/statusText"
-            android:layout_width="match_parent"
+        <Button
+            android:id="@+id/btnSettings"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingTop="4dp"
-            android:paddingBottom="8dp"
-            android:text="Connecting…"
-            android:textSize="14sp" />
+            android:minWidth="56dp"
+            android:text="Setup" />
 
-        <!-- D-pad -->
-        <GridLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:columnCount="3">
-
-            <View
-                android:layout_width="0dp"
-                android:layout_columnWeight="1" />
-
-            <Button
-                android:id="@+id/btnUp"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="72dp"
-                android:text="▲"
-                android:textSize="24sp" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_columnWeight="1" />
-
-            <Button
-                android:id="@+id/btnLeft"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="72dp"
-                android:text="◀"
-                android:textSize="24sp" />
-
-            <Button
-                android:id="@+id/btnOk"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="72dp"
-                android:text="OK"
-                android:textSize="20sp" />
-
-            <Button
-                android:id="@+id/btnRight"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="72dp"
-                android:text="▶"
-                android:textSize="24sp" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_columnWeight="1" />
-
-            <Button
-                android:id="@+id/btnDown"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="72dp"
-                android:text="▼"
-                android:textSize="24sp" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_columnWeight="1" />
-        </GridLayout>
-
-        <!-- Back / Home / Mute / Power -->
-        <GridLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:columnCount="4"
-            android:layout_marginTop="8dp">
-
-            <Button
-                android:id="@+id/btnBack"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="56dp"
-                android:text="Back" />
-
-            <Button
-                android:id="@+id/btnHome"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="56dp"
-                android:text="Home" />
-
-            <Button
-                android:id="@+id/btnMute"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="56dp"
-                android:text="Mute" />
-
-            <Button
-                android:id="@+id/btnPower"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="56dp"
-                android:text="Power" />
-        </GridLayout>
-
-        <!-- Volume -->
-        <GridLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:columnCount="2"
-            android:layout_marginTop="8dp">
-
-            <Button
-                android:id="@+id/btnVolDown"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="64dp"
-                android:text="VOL −"
-                android:textSize="20sp" />
-
-            <Button
-                android:id="@+id/btnVolUp"
-                android:layout_width="0dp"
-                android:layout_columnWeight="1"
-                android:minHeight="64dp"
-                android:text="VOL +"
-                android:textSize="20sp" />
-        </GridLayout>
-
-        <!-- Apps -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Apps"
-            android:textSize="16sp" />
-
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-
-            <LinearLayout
-                android:id="@+id/appsRow"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingTop="4dp"
-                android:paddingBottom="16dp" />
-        </HorizontalScrollView>
+        <ImageButton
+            android:id="@+id/btnPower"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Power"
+            android:src="@drawable/ic_power" />
     </LinearLayout>
-</ScrollView>
+
+    <!-- Transient status only (connecting / reconnecting / approval prompts).
+         Gone the rest of the time; persistent state lives in the LED dot. -->
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <!-- D-pad: uniform 3x3 grid. Every cell (buttons and spacers) has the same
+         column/row weight and fill gravity, so all five buttons share uniform
+         sizing and OK stays aligned with left/right. -->
+    <GridLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="4"
+        android:layout_marginTop="4dp"
+        android:columnCount="3"
+        android:rowCount="3">
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1" />
+
+        <Button
+            android:id="@+id/btnUp"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="▲"
+            android:textSize="24sp" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1" />
+
+        <Button
+            android:id="@+id/btnLeft"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="◀"
+            android:textSize="24sp" />
+
+        <Button
+            android:id="@+id/btnOk"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="OK"
+            android:textSize="20sp" />
+
+        <Button
+            android:id="@+id/btnRight"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="▶"
+            android:textSize="24sp" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1" />
+
+        <Button
+            android:id="@+id/btnDown"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="▼"
+            android:textSize="24sp" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1" />
+    </GridLayout>
+
+    <!-- Back / Home -->
+    <GridLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp"
+        android:columnCount="2"
+        android:rowCount="1">
+
+        <Button
+            android:id="@+id/btnBack"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1"
+            android:gravity="center"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="Back" />
+
+        <Button
+            android:id="@+id/btnHome"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_columnWeight="1"
+            android:layout_gravity="fill"
+            android:layout_rowWeight="1"
+            android:gravity="center"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:text="Home" />
+    </GridLayout>
+
+    <!-- Volume cluster like a physical remote: VOL+ top, MUTE middle, VOL- bottom -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="3"
+        android:layout_marginTop="8dp"
+        android:orientation="vertical">
+
+        <Button
+            android:id="@+id/btnVolUp"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:minHeight="0dp"
+            android:text="VOL +"
+            android:textSize="20sp" />
+
+        <ImageButton
+            android:id="@+id/btnMute"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="6dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:contentDescription="Mute"
+            android:scaleType="center"
+            android:src="@drawable/ic_mute" />
+
+        <Button
+            android:id="@+id/btnVolDown"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:minHeight="0dp"
+            android:text="VOL −"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <!-- Apps -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Apps"
+        android:textSize="16sp" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <LinearLayout
+            android:id="@+id/appsRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp" />
+    </HorizontalScrollView>
+</LinearLayout>

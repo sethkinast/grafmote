@@ -5,6 +5,11 @@
          The app is LAN-only by design: it never connects anywhere except
          the TV IPs the user configures. No ads, analytics, or cloud. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required for SSDP discovery: without a WifiManager multicast lock,
+         Android's WiFi stack silently drops incoming multicast packets, so
+         M-SEARCH responses never reach the app. Normal (non-multicast)
+         LAN traffic such as manual-IP control needs no extra permission. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <application
         android:label="Graf Remote"

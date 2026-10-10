@@ -56,7 +56,7 @@ class TvConnection(private val store: TvStore) {
 
     var listener: Listener? = null
 
-    private val exec = Executors.newSingleThreadExecutor()
+    private val exec = Executors.newSingleThreadScheduledExecutor()
     private val main = Handler(Looper.getMainLooper())
 
     // NOTE (TLS): token-supporting TVs serve a SELF-SIGNED cert on :8002 with no
@@ -86,6 +86,8 @@ class TvConnection(private val store: TvStore) {
     @Volatile private var activeTvId: String? = null
     @Volatile private var socket: WebSocket? = null
     @Volatile private var connState: State = State.IDLE
+    /** Bumped on every (re)connect so a stale scheduled reconnect never fires. */
+    private var generation = 0
     private val pending = ArrayDeque<String>()
     private var sawConnectEvent = false
 
@@ -94,6 +96,7 @@ class TvConnection(private val store: TvStore) {
     /** Switch the active TV: drop the old socket, connect to the new one. */
     fun selectTv(tv: Tv?) {
         exec.execute {
+            generation++
             try {
                 socket?.close(1000, "switch")
             } catch (_: Exception) {
@@ -126,6 +129,7 @@ class TvConnection(private val store: TvStore) {
         exec.execute {
             if (activeTvId != tv.id) {
                 activeTvId = tv.id
+                generation++
                 sawConnectEvent = false
                 try {
                     socket?.close(1000, "switch")
@@ -169,23 +173,32 @@ class TvConnection(private val store: TvStore) {
     fun refreshInfo(tv: Tv, cb: ((power: String) -> Unit)? = null) {
         exec.execute {
             var power = "unknown"
-            try {
-                val root = restGet("http://${tv.host}:8001/api/v2/")
-                val dev = root?.optJSONObject("device")
-                if (dev != null) {
-                    val ps = dev.optString("PowerState", "")
-                    power = if (ps == "on") "on" else "off"
-                    val mac = dev.optString("wifiMac", "")
-                    val tokenSupport = dev.optString("TokenAuthSupport", "false") == "true"
-                    if (mac.isNotEmpty() || tokenSupport != tv.tokenSupport) {
-                        tv.wifiMac = mac
-                        tv.tokenSupport = tokenSupport
-                        store.updateMeta(tv.id, tokenSupport, mac)
+            var raw = ""
+            var fetched = false
+            // One immediate retry: a single transient failure must never flip
+            // the UI to "off" — only a positive off/standby reading does that.
+            repeat(2) {
+                if (fetched) return@repeat
+                try {
+                    val root = restGet("http://${tv.host}:8001/api/v2/")
+                    val dev = root?.optJSONObject("device")
+                    if (dev != null) {
+                        fetched = true
+                        raw = dev.optString("PowerState", "")
+                        power = parsePower(raw)
+                        val mac = dev.optString("wifiMac", "")
+                        val tokenSupport = dev.optString("TokenAuthSupport", "false") == "true"
+                        if (mac.isNotEmpty() || tokenSupport != tv.tokenSupport) {
+                            tv.wifiMac = mac
+                            tv.tokenSupport = tokenSupport
+                            store.updateMeta(tv.id, tokenSupport, mac)
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.d(TAG, "refreshInfo attempt failed: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.d(TAG, "refreshInfo failed: ${e.message}")
             }
+            Log.d(TAG, "refreshInfo ${tv.host} PowerState raw='$raw' -> '$power'")
             val p = power
             main.post {
                 listener?.onPower(tv, p)
@@ -230,6 +243,29 @@ class TvConnection(private val store: TvStore) {
     }
 
     // ---- internals (run on exec) ----
+
+    /**
+     * Normalize the REST device.PowerState value. Real TVs return values other
+     * than exactly "on" (e.g. "standby", case variants). Anything unrecognized
+     * or missing (failed poll) is "unknown" — never "off", so a failed poll is
+     * never mistaken for a powered-off TV.
+     */
+    private fun parsePower(raw: String): String = when (raw.trim().lowercase()) {
+        "on" -> "on"
+        "off", "standby", "screenoff", "screen_off", "deepstandby",
+        "suspended", "passive", "poweroff", "power_off" -> "off"
+        else -> "unknown"
+    }
+
+    /** Silent auto-reconnect after a dropped socket; stale generations no-op. */
+    private fun scheduleReconnect(tv: Tv) {
+        val gen = generation
+        exec.schedule({
+            if (gen == generation && tv.id == activeTvId && socket == null) {
+                connectLocked(tv)
+            }
+        }, 2, TimeUnit.SECONDS)
+    }
 
     private fun connectLocked(tv: Tv) {
         setState(tv, State.CONNECTING, "Connecting to ${tv.nick}")
@@ -325,8 +361,15 @@ class TvConnection(private val store: TvStore) {
             // newer connection (e.g. the plain-ws retry above) is never dropped
             // by a stale failure.
             if (socket === ws) socket = null
+            // Log the raw reason for debugging, but NEVER surface it: the UI
+            // only ever sees friendly transient strings (see setState calls).
+            Log.d(TAG, "socket gone for ${tv.host}: $detail")
             if (sawConnectEvent || tv.token.isNotEmpty()) {
-                setState(tv, State.IDLE, "Disconnected ($detail) — tap any button to reconnect")
+                // Previously-connected socket died (e.g. the app was
+                // backgrounded and the TV/OS killed it). Silent auto-reconnect
+                // with a transient friendly status — no error shown.
+                setState(tv, State.IDLE, "Reconnecting…")
+                scheduleReconnect(tv)
             } else if (detail.contains("refused", true) ||
                 detail.contains("unreachable", true) ||
                 detail.contains("timed out", true) ||
