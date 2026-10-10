@@ -177,7 +177,7 @@ class SettingsActivity : Activity() {
     private fun scan() {
         toast("Scanning LAN for Samsung TVs…")
         thread {
-            val found = Ssdp.discover()
+            val found = Ssdp.discover(this@SettingsActivity)
             runOnUiThread {
                 if (found.isEmpty()) {
                     toast("No TVs found — add by IP manually")
