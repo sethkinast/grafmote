@@ -27,7 +27,6 @@ jobs:
   # committed: the keystore is decoded from KEYSTORE_BASE64 into a temp file
   # at job time, and app/build.gradle reads all values from env vars only.
   build-release:
-    if: ${{ secrets.KEYSTORE_BASE64 != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,11 +34,19 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Decode keystore
-        run: echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+      - name: Prepare keystore (skip if no secrets)
+        id: keystore
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "has_keystore=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "has_keystore=true" >> "$GITHUB_OUTPUT"
+          fi
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       - name: Build signed release APK
+        if: steps.keystore.outputs.has_keystore == 'true'
         run: ./gradlew assembleRelease
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
@@ -47,6 +54,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       - uses: actions/upload-artifact@v4
+        if: steps.keystore.outputs.has_keystore == 'true'
         with:
           name: grafmote-release
           path: app/build/outputs/apk/release/*.apk
