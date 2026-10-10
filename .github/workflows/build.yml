@@ -1,0 +1,52 @@
+name: Build APK
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grafmote-debug
+          path: app/build/outputs/apk/debug/*.apk
+
+  # Signed release APK. Stays green (skipped) until the repo has the four
+  # secrets documented in README.md ("Release signing"). No key material is
+  # committed: the keystore is decoded from KEYSTORE_BASE64 into a temp file
+  # at job time, and app/build.gradle reads all values from env vars only.
+  build-release:
+    if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Decode keystore
+        run: echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      - name: Build signed release APK
+        run: ./gradlew assembleRelease
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grafmote-release
+          path: app/build/outputs/apk/release/*.apk

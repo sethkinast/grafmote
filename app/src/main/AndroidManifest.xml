@@ -17,6 +17,8 @@
 
     <application
         android:label="Graf Remote"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.GrafRemote"
         android:usesCleartextTraffic="true"
         android:allowBackup="true">
