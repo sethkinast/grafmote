@@ -137,6 +137,20 @@ class MainActivity : Activity(), TvConnection.Listener {
         super.onResume()
         tvs = store.loadTvs()
         apps = store.loadApps()
+        // Round 30: universal icon matching — preseeded defaults (and any
+        // icon-less stored button) pick up the catalog logo on first sight
+        // so fresh installs get logo tiles without visiting settings.
+        try {
+            val catalog = AppCatalog.load(this)
+            if (catalog.isNotEmpty()) {
+                var changed = false
+                for (app in apps) {
+                    if (AppCatalog.enrichButton(app, catalog)) changed = true
+                }
+                if (changed) store.saveApps(apps)
+            }
+        } catch (_: Exception) {
+        }
         buildSpinner()
         buildAppButtons()
         // Foreground kick (round 19): same-TV foregrounding keeps the

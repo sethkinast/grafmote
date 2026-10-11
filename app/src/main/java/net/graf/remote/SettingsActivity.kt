@@ -83,10 +83,24 @@ class SettingsActivity : Activity() {
         if (tvs.isEmpty()) tvList.addView(hint("No TVs yet — add one by IP or scan."))
         for (tv in tvs) {
             val sub = if (tv.haptic) tv.host else "${tv.host} · haptics off"
-            tvList.addView(row("${tv.nick}\n$sub", onEdit = { tvDialog(tv) }))
+            tvList.addView(tvRow(tv.nick, sub, onEdit = { tvDialog(tv) }))
         }
         appList.removeAllViews()
         val apps = store.loadApps()
+        // Round 30: universal icon matching — backfill any stored button
+        // (preseeded defaults, TV-API adds, manual entries) against the
+        // vendored catalog so matched rows get the catalog logo.
+        try {
+            val catalog = AppCatalog.load(this)
+            if (catalog.isNotEmpty()) {
+                var changed = false
+                for (app in apps) {
+                    if (AppCatalog.enrichButton(app, catalog)) changed = true
+                }
+                if (changed) store.saveApps(apps)
+            }
+        } catch (_: Exception) {
+        }
         if (apps.isEmpty()) appList.addView(hint("No app buttons."))
         for (app in apps) {
             appList.addView(appRow(app))
@@ -94,24 +108,41 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * TV row (round 29): label + Edit glyph ONLY (Delete moved into the TV
-     * edit dialog, same pattern as the app rows). TV rows stay
+     * TV row (round 30): two-line typography — name at 16sp, IP/host line
+     * 2sp smaller in light gray — plus Edit glyph ONLY. TV rows stay
      * non-draggable.
      */
-    private fun row(text: String, onEdit: () -> Unit): LinearLayout {
+    private fun tvRow(name: String, sub: String, onEdit: () -> Unit): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            val label = TextView(context).apply {
-                this.text = text
-                textSize = 16f
+            val texts = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(context).apply {
+                    text = name
+                    textSize = 16f
+                    setTextColor(0xFFF2F2F2.toInt())
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                })
+                addView(TextView(context).apply {
+                    text = sub
+                    textSize = 14f
+                    setTextColor(0xFFAAAAAA.toInt())
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                })
             }
-            addView(label)
+            addView(texts)
             addView(editGlyph(onEdit))
             setPadding(dp(4), dp(6), dp(4), dp(6))
         }
+    }
+
+    /** Round 29 row() kept as a thin alias for the TV row. */
+    private fun row(text: String, onEdit: () -> Unit): LinearLayout {
+        val parts = text.split("\n", limit = 2)
+        return tvRow(parts.getOrElse(0) { text }, parts.getOrElse(1) { "" }, onEdit)
     }
 
     /**
@@ -132,10 +163,12 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * App-button row (round 29): handle + label + Edit glyph ONLY (Delete
-     * lives in the edit dialog). The handle starts a drag-and-drop reorder
-     * with a placeholder gap: the original row hides (INVISIBLE, keeping
-     * its slot) while its shadow is dragged, and a single centralized
+     * App-button row (round 30): the WHOLE row is the drag handle — no
+     * handle glyph (rows aren't tappable, so no gesture conflict). Label is
+     * two-line typography (name 16sp, app ID 14sp light gray) + Edit glyph
+     * ONLY (Delete lives in the edit dialog). The row starts a
+     * drag-and-drop reorder with a placeholder gap: the original row is GONE
+     * (no layout gap) while its shadow is dragged, and a single centralized
      * hover path on the container snaps the placeholder above/below the
      * hovered row by pointer half — symmetric in both directions, first
      * position reachable. TV rows stay non-draggable.
@@ -150,46 +183,43 @@ class SettingsActivity : Activity() {
         row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            val handle = TextView(context).apply {
-                text = "☰"
-                textSize = 22f
-                gravity = android.view.Gravity.CENTER
-                contentDescription = "Drag to reorder"
-                setPadding(dp(4), dp(4), dp(12), dp(4))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            }
-            val label = TextView(context).apply {
-                this.text = "${app.label}\n$sub"
-                textSize = 16f
+            val texts = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(context).apply {
+                    text = app.label
+                    textSize = 16f
+                    setTextColor(0xFFF2F2F2.toInt())
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                })
+                addView(TextView(context).apply {
+                    text = sub
+                    textSize = 14f
+                    setTextColor(0xFFAAAAAA.toInt())
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                })
             }
             val edit = editGlyph { appDialog(app) }
-            addView(handle)
-            addView(label)
+            addView(texts)
             addView(edit)
             setPadding(dp(4), dp(6), dp(4), dp(6))
             tag = app.id
-            handle.setOnTouchListener { v, ev ->
+            setOnTouchListener { v, ev ->
                 if (ev.action == MotionEvent.ACTION_DOWN) {
                     draggedAppId = app.id
                     draggedRowHeight = row.height
                     draggedRow = row
-                    // Touch point relative to the ROW (handle sits at its
-                    // left), so the shadow originates at the handle.
-                    val tx = (handle.left + ev.x).toInt()
-                    val ty = (handle.top + ev.y).toInt()
+                    val tx = ev.x.toInt()
+                    val ty = ev.y.toInt()
                     val shadowView = buildAppRowShadow(app, sub, row)
                     val data = ClipData.newPlainText("app-button", app.id)
                     v.startDragAndDrop(data, AppRowShadow(shadowView, tx, ty), app.id, 0)
-                    // Round 29: hide the original row (INVISIBLE keeps its
-                    // layout slot) while its shadow is dragged — the
-                    // placeholder alone models the future slot, so the
-                    // visible list never grows by an extra row.
-                    row.visibility = View.INVISIBLE
+                    // Round 30: the original row is GONE (no layout slot)
+                    // while its shadow is dragged — the placeholder alone
+                    // models the future slot, so the visible list never
+                    // keeps a gap where the row was.
+                    row.visibility = View.GONE
                     true
                 } else {
                     false
@@ -200,9 +230,9 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Drag shadow (round 27): a detached clone showing handle + label ONLY
-     * (no Edit/Delete buttons) over a solid opaque background, drawn at the
-     * touch point passed in from the handle.
+     * Drag shadow (round 30): a detached clone showing the label ONLY (no
+     * handle, no Edit/Delete buttons) over a solid opaque background, drawn
+     * at the touch point passed in from the row.
      */
     private fun buildAppRowShadow(app: AppButton, sub: String, row: LinearLayout): View {
         val shadow = LinearLayout(this).apply {
@@ -210,19 +240,20 @@ class SettingsActivity : Activity() {
             gravity = android.view.Gravity.CENTER_VERTICAL
             setBackgroundColor(0xFF2E2E33.toInt())
             setPadding(dp(4), dp(6), dp(4), dp(6))
-            addView(TextView(context).apply {
-                text = "☰"
-                textSize = 22f
-                gravity = android.view.Gravity.CENTER
-                setTextColor(0xFFF2F2F2.toInt())
-                setPadding(dp(4), dp(4), dp(12), dp(4))
-            })
-            addView(TextView(context).apply {
-                text = "${app.label}\n$sub"
-                textSize = 16f
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                setTextColor(0xFFF2F2F2.toInt())
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(context).apply {
+                    text = app.label
+                    textSize = 16f
+                    setTextColor(0xFFF2F2F2.toInt())
+                })
+                addView(TextView(context).apply {
+                    text = sub
+                    textSize = 14f
+                    setTextColor(0xFFAAAAAA.toInt())
+                })
             })
         }
         val w = if (row.width > 0) row.width else dp(320)
@@ -292,14 +323,13 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Round 29: centralized hover hit-test (coordinates relative to
-     * appList, the container receiving the event). Every touch maps to
-     * exactly one app row over its FULL bounds — rows are laid out flush,
-     * so there are no dead zones and the placeholder can never thrash to
-     * the bottom. The hidden original row is still a valid hover target
-     * (its INVISIBLE slot is a future position), which is what makes the
-     * first position reachable. Touch over the placeholder itself (margins
-     * included) is a no-op.
+     * Round 30: centralized gapless hover hit-test (coordinates relative to
+     * appList, the container receiving the event). App rows partition the
+     * container's full vertical span into continuous intervals split at the
+     * midpoints between consecutive rows — no pixel may belong to no row,
+     * so the ~1px dead zone between rows can never throw the placeholder
+     * to the bottom. The GONE original row is excluded (it has no slot);
+     * touch over the placeholder itself (margins included) is a no-op.
      */
     private fun handleHover(y: Float) {
         if (draggedAppId == null) return
@@ -310,35 +340,33 @@ class SettingsActivity : Activity() {
             val bottom = ph.bottom + (lp?.bottomMargin ?: 0)
             if (y >= top && y <= bottom) return
         }
-        var target: View? = null
-        var above = true
+        val rows = mutableListOf<View>()
         for (i in 0 until appList.childCount) {
             val c = appList.getChildAt(i)
-            if (c === ph || c.tag !is String) continue
-            if (y >= c.top && y <= c.bottom) {
+            if (c === ph) continue
+            if (c.tag !is String) continue
+            if (c.tag == draggedAppId) continue
+            rows.add(c)
+        }
+        if (rows.isEmpty()) return
+        rows.sortBy { it.top }
+        var target: View? = null
+        var above = true
+        for (i in rows.indices) {
+            val c = rows[i]
+            val topEdge = if (i == 0) Float.NEGATIVE_INFINITY
+                else (rows[i - 1].bottom + c.top) / 2f
+            val bottomEdge = if (i == rows.size - 1) Float.POSITIVE_INFINITY
+                else (c.bottom + rows[i + 1].top) / 2f
+            if (y >= topEdge && y < bottomEdge) {
                 target = c
                 above = y < c.top + c.height / 2f
                 break
             }
         }
         if (target == null) {
-            // Margin gap or past the ends: nearest app row wins. Below
-            // the last row snaps after it (append); above the first row
-            // snaps before it (new row 1).
-            var best: View? = null
-            var bestDist = Float.MAX_VALUE
-            for (i in 0 until appList.childCount) {
-                val c = appList.getChildAt(i)
-                if (c === ph || c.tag !is String) continue
-                val d = if (y < c.top) (c.top - y).toFloat() else (y - c.bottom).toFloat()
-                if (d < bestDist) {
-                    bestDist = d
-                    best = c
-                }
-            }
-            if (best == null) return
-            target = best
-            above = y < best.top
+            target = rows.last()
+            above = false
         }
         movePlaceholder(target, above)
     }
@@ -379,7 +407,7 @@ class SettingsActivity : Activity() {
         dragPlaceholder = null
         draggedAppId = null
         draggedRowHeight = 0
-        // Round 29: un-hide the original row (commitDrop() re-renders
+        // Round 30: un-hide the GONE original row (commitDrop() re-renders
         // right after, so this only matters for cancelled drags).
         draggedRow?.visibility = View.VISIBLE
         draggedRow = null
@@ -410,11 +438,11 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Round 29: the container is the ONLY hover target — rows carry no
+     * Round 30: the container is the ONLY hover target — rows carry no
      * drag listeners of their own. Every ENTERED/LOCATION hit-tests by
-     * coordinates (handleHover), so the full row bounds are covered with
-     * no dead zones; gaps and the past-the-last-row area resolve to the
-     * nearest row instead of thrashing the placeholder to the bottom.
+     * gapless coordinates (handleHover), so no pixel belongs to no row;
+     * the past-the-last-row area resolves to the last row instead of
+     * thrashing the placeholder to the bottom.
      */
     private fun appListDropListener(): View.OnDragListener {
         return View.OnDragListener { _, event ->
@@ -441,10 +469,10 @@ class SettingsActivity : Activity() {
     private fun hint(text: String) = TextView(this).apply { this.text = text }
 
     /**
-     * Add/edit TV dialog (round 29): same fields + Save/Cancel behavior as
-     * before; TV rows show Edit only now, so Delete lives here — a red
-     * text button on the left of the dialog's actions row (edit mode
-     * only), same pattern as the app rows.
+     * Add/edit TV dialog (round 30): fields in the content view, actions as
+     * AlertDialog positive (Save) / negative (Cancel) / neutral (Delete in
+     * edit mode only) buttons — no hand-built action rows. The window wraps
+     * to its contents, never full-height.
      */
     private fun tvDialog(existing: Tv?) {
         val nick = EditText(this).apply {
@@ -466,88 +494,55 @@ class SettingsActivity : Activity() {
             addView(host)
             addView(haptic)
         }
-        val actions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, dp(12), 0, 0)
-        }
-        val dialog = AlertDialog.Builder(this)
+        val builder = AlertDialog.Builder(this)
             .setTitle(if (existing == null) "Add TV" else "Edit TV")
             .setView(layout)
-            .create()
-        if (existing == null) {
-            actions.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-        } else {
-            actions.addView(Button(this).apply {
-                text = "Delete"
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-                isAllCaps = false
-                includeFontPadding = false
-                minWidth = 0
-                minimumWidth = 0
-                setBackgroundColor(0x00000000)
-                setTextColor(0xFFFF453A.toInt())
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                setOnClickListener {
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", null)
+        if (existing != null) {
+            builder.setNeutralButton("Delete", null)
+        }
+        val dialog = builder.create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+            val n = nick.text.toString().trim()
+            val h = host.text.toString().trim()
+            if (n.isEmpty() || h.isEmpty()) {
+                toast("Nickname and IP are both required")
+                return@setOnClickListener
+            }
+            val all = store.loadTvs()
+            val hapticOn = haptic.isChecked
+            if (existing == null) {
+                all.add(Tv(UUID.randomUUID().toString(), n, h, haptic = hapticOn))
+            } else {
+                all.firstOrNull { it.id == existing.id }?.let {
+                    it.nick = n
+                    it.host = h
+                    it.haptic = hapticOn
+                }
+            }
+            store.saveTvs(all)
+            render()
+            dialog.dismiss()
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setOnClickListener {
+            dialog.dismiss()
+        }
+        if (existing != null) {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.let { delete ->
+                delete.setTextColor(0xFFFF453A.toInt())
+                delete.setOnClickListener {
                     store.saveTvs(store.loadTvs().filter { it.id != existing.id })
                     render()
                     dialog.dismiss()
                 }
-            })
-            actions.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-        }
-        actions.addView(Button(this).apply {
-            text = "Cancel"
-            textSize = 14f
-            isAllCaps = false
-            minWidth = 0
-            minimumWidth = 0
-            setBackgroundColor(0x00000000)
-            setTextColor(0xFFF2F2F2.toInt())
-            setOnClickListener { dialog.dismiss() }
-        })
-        actions.addView(Button(this).apply {
-            text = "Save"
-            textSize = 14f
-            isAllCaps = false
-            includeFontPadding = false
-            minWidth = 0
-            minimumWidth = 0
-            setBackgroundColor(0x00000000)
-            setTextColor(0xFFF2F2F2.toInt())
-            setOnClickListener {
-                val n = nick.text.toString().trim()
-                val h = host.text.toString().trim()
-                if (n.isEmpty() || h.isEmpty()) {
-                    toast("Nickname and IP are both required")
-                    return@setOnClickListener
-                }
-                val all = store.loadTvs()
-                val hapticOn = haptic.isChecked
-                if (existing == null) {
-                    all.add(Tv(UUID.randomUUID().toString(), n, h, haptic = hapticOn))
-                } else {
-                    all.firstOrNull { it.id == existing.id }?.let {
-                        it.nick = n
-                        it.host = h
-                        it.haptic = hapticOn
-                    }
-                }
-                store.saveTvs(all)
-                render()
-                dialog.dismiss()
             }
-        })
-        layout.addView(actions)
-        dialog.show()
+        }
+        dialog.window?.setLayout(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
     }
 
     /**
@@ -658,20 +653,38 @@ class SettingsActivity : Activity() {
             }
             val names = found.map { it.name }.toTypedArray()
             val checked = BooleanArray(found.size)
+            // Round 30: the TV results dialog also offers the catalog
+            // browser (neutral button) — a working TV query no longer hides
+            // the catalog. Manual entry stays one tap away inside the
+            // catalog browser.
             AlertDialog.Builder(this)
                 .setTitle("Add apps from ${target.nick}")
                 .setMultiChoiceItems(names, checked) { _, which, isChecked ->
                     checked[which] = isChecked
                 }
                 .setPositiveButton("Add selected") { _, _ ->
+                    val catalog = try {
+                        AppCatalog.load(this)
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
                     val all = store.loadApps()
-                    val have = all.map { it.appId }.toSet()
+                    val have = all.flatMap { it.launchIds() }.toSet()
                     var added = 0
                     found.forEachIndexed { i, info ->
                         if (checked[i] && !have.contains(info.appId) &&
-                            all.none { it.appId == info.appId }
+                            all.none { it.launchIds().contains(info.appId) }
                         ) {
-                            all.add(AppButton(UUID.randomUUID().toString(), info.name, info.appId))
+                            // Round 30: TV-API adds match the catalog by
+                            // name or app ID so they get the logo tile.
+                            val match = AppCatalog.findMatch(catalog, info.name, info.appId)
+                            val ids = if (match != null) {
+                                (listOf(info.appId) + match.ids).distinct()
+                            } else {
+                                listOf(info.appId)
+                            }
+                            val icon = match?.icon?.ifBlank { null }
+                            all.add(AppButton(UUID.randomUUID().toString(), info.name, info.appId, ids, icon))
                             added++
                         }
                     }
@@ -679,7 +692,7 @@ class SettingsActivity : Activity() {
                     render()
                     toast(if (added > 0) "Added $added app(s)" else "Nothing new selected")
                 }
-                .setNeutralButton("Enter manually") { _, _ -> appDialog(null) }
+                .setNeutralButton("Browse catalog") { _, _ -> showCatalogBrowser(null) }
                 .setNegativeButton("Cancel", null)
                 .show()
         }
@@ -846,13 +859,20 @@ class SettingsActivity : Activity() {
             .setNegativeButton("Cancel", null)
             .create()
         dialog.show()
+        // Round 30: wrap to content height — never full-height.
+        dialog.window?.setLayout(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
     }
 
     /**
-     * Add/edit app-button dialog (round 27): same fields + Save/Cancel
-     * behavior as before; rows show Edit only, so Delete lives here — a red
-     * text button on the left of the dialog's actions row (edit mode only).
-     * Round 29: the window wraps to its contents (never full-height).
+     * Add/edit app-button dialog (round 30): fields in the content view,
+     * actions as AlertDialog positive (Save) / negative (Cancel) / neutral
+     * (Delete in edit mode only) buttons — no hand-built action rows.
+     * Manual entries are matched against the vendored catalog by name or
+     * app ID so they get the catalog logo + fallback IDs. The window wraps
+     * to its contents, never full-height.
      */
     private fun appDialog(existing: AppButton?) {
         val label = EditText(this).apply {
@@ -874,93 +894,78 @@ class SettingsActivity : Activity() {
             addView(appId)
             addView(iconUrl)
         }
-        val actions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, dp(12), 0, 0)
-        }
-        val dialog = AlertDialog.Builder(this)
+        val builder = AlertDialog.Builder(this)
             .setTitle(if (existing == null) "Add app button" else "Edit app button")
             .setView(layout)
-            .create()
-        if (existing == null) {
-            actions.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-        } else {
-            actions.addView(Button(this).apply {
-                text = "Delete"
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-                isAllCaps = false
-                includeFontPadding = false
-                minWidth = 0
-                minimumWidth = 0
-                setBackgroundColor(0x00000000)
-                setTextColor(0xFFFF453A.toInt())
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                setOnClickListener {
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", null)
+        if (existing != null) {
+            builder.setNeutralButton("Delete", null)
+        }
+        val dialog = builder.create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+            val l = label.text.toString().trim()
+            val a = appId.text.toString().trim()
+            val typedIcon = iconUrl.text.toString().trim().ifEmpty { null }
+            if (l.isEmpty() || a.isEmpty()) {
+                toast("Label and app ID are both required")
+                return@setOnClickListener
+            }
+            val catalog = try {
+                AppCatalog.load(this)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val match = AppCatalog.findMatch(catalog, l, a)
+            val resolvedIcon = typedIcon ?: match?.icon?.ifBlank { null }
+            val resolvedIds = if (match != null) {
+                (listOf(a) + match.ids).distinct()
+            } else {
+                listOf(a)
+            }
+            val all = store.loadApps()
+            if (existing == null) {
+                all.add(AppButton(UUID.randomUUID().toString(), l, a, resolvedIds, resolvedIcon))
+            } else {
+                all.firstOrNull { it.id == existing.id }?.let {
+                    it.label = l
+                    if (a != it.appId) {
+                        // Changed primary ID: reset the fallback chain
+                        // around the typed ID (+ catalog fallbacks).
+                        it.appId = a
+                        it.appIds = resolvedIds
+                        it.iconUrl = resolvedIcon
+                    } else if (match != null) {
+                        // Unchanged ID with a catalog match: an explicit
+                        // typed icon wins, otherwise keep the stored one
+                        // and fill blanks from the catalog.
+                        if (typedIcon != null) it.iconUrl = typedIcon
+                        else if (it.iconUrl.isNullOrBlank()) it.iconUrl = resolvedIcon
+                        val merged = (it.launchIds() + match.ids).distinct()
+                        if (merged.size > it.launchIds().size) it.appIds = merged
+                    } else {
+                        it.iconUrl = typedIcon
+                    }
+                }
+            }
+            store.saveApps(all)
+            render()
+            dialog.dismiss()
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setOnClickListener {
+            dialog.dismiss()
+        }
+        if (existing != null) {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.let { delete ->
+                delete.setTextColor(0xFFFF453A.toInt())
+                delete.setOnClickListener {
                     store.saveApps(store.loadApps().filter { it.id != existing.id })
                     render()
                     dialog.dismiss()
                 }
-            })
-            actions.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-        }
-        actions.addView(Button(this).apply {
-            text = "Cancel"
-            textSize = 14f
-            isAllCaps = false
-            minWidth = 0
-            minimumWidth = 0
-            setBackgroundColor(0x00000000)
-            setTextColor(0xFFF2F2F2.toInt())
-            setOnClickListener { dialog.dismiss() }
-        })
-        actions.addView(Button(this).apply {
-            text = "Save"
-            textSize = 14f
-            isAllCaps = false
-            includeFontPadding = false
-            minWidth = 0
-            minimumWidth = 0
-            setBackgroundColor(0x00000000)
-            setTextColor(0xFFF2F2F2.toInt())
-            setOnClickListener {
-                val l = label.text.toString().trim()
-                val a = appId.text.toString().trim()
-                val icon = iconUrl.text.toString().trim().ifEmpty { null }
-                if (l.isEmpty() || a.isEmpty()) {
-                    toast("Label and app ID are both required")
-                    return@setOnClickListener
-                }
-                val all = store.loadApps()
-                if (existing == null) {
-                    all.add(AppButton(UUID.randomUUID().toString(), l, a, listOf(a), icon))
-                } else {
-                    all.firstOrNull { it.id == existing.id }?.let {
-                        it.label = l
-                        // A changed primary ID resets the fallback chain to the
-                        // single typed ID; an unchanged ID keeps catalog picks.
-                        if (a != it.appId) {
-                            it.appId = a
-                            it.appIds = listOf(a)
-                        }
-                        it.iconUrl = icon
-                    }
-                }
-                store.saveApps(all)
-                render()
-                dialog.dismiss()
             }
-        })
-        layout.addView(actions)
-        dialog.show()
+        }
         // Round 29: fit/wrap to contents — never stretch full height.
         dialog.window?.setLayout(
             ViewGroup.LayoutParams.MATCH_PARENT,

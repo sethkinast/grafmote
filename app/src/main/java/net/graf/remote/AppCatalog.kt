@@ -59,4 +59,41 @@ object AppCatalog {
         }
         return out.sortedBy { it.name.lowercase() }
     }
+
+    /**
+     * Round 30: universal icon matching — match any app button against the
+     * catalog by Samsung app ID (any fallback ID, case-insensitive) or by
+     * name (case-insensitive exact). ID match wins over name match.
+     */
+    fun findMatch(catalog: List<CatalogApp>, name: String, appId: String): CatalogApp? {
+        val n = name.trim()
+        val id = appId.trim()
+        if (id.isNotEmpty()) {
+            catalog.firstOrNull { c -> c.ids.any { it.equals(id, ignoreCase = true) } }?.let { return it }
+        }
+        if (n.isNotEmpty()) {
+            catalog.firstOrNull { c -> c.name.equals(n, ignoreCase = true) }?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * Round 30: backfill a stored button from its catalog match — fills a
+     * blank iconUrl with the catalog logo and merges catalog fallback IDs
+     * behind the button's own primary ID. Returns true when mutated.
+     */
+    fun enrichButton(app: AppButton, catalog: List<CatalogApp>): Boolean {
+        val match = findMatch(catalog, app.label, app.appId) ?: return false
+        var changed = false
+        if (app.iconUrl.isNullOrBlank() && match.icon.isNotBlank()) {
+            app.iconUrl = match.icon
+            changed = true
+        }
+        val merged = (app.launchIds() + match.ids).distinct()
+        if (merged.size > app.launchIds().size) {
+            app.appIds = merged
+            changed = true
+        }
+        return changed
+    }
 }
