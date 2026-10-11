@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ONE connected plus-shaped D-pad face (game-controller style): a vertical
+     bar crossed by a horizontal bar, same gradient and top-right light
+     (angle=45) on both. The round OK button (72dp) fully covers the 64dp
+     bar intersection, hiding every internal stroke crossing, so the pad
+     reads as a single cross. Arrow glyphs sit on transparent touch zones
+     layered above; the bars are the only visible face. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="64dp"
+        android:height="200dp"
+        android:gravity="center">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="45"
+                android:startColor="#2E2E33"
+                android:endColor="#585862" />
+            <corners android:radius="18dp" />
+            <stroke
+                android:width="1dp"
+                android:color="#1A1A1C" />
+        </shape>
+    </item>
+    <item
+        android:width="200dp"
+        android:height="64dp"
+        android:gravity="center">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="45"
+                android:startColor="#2E2E33"
+                android:endColor="#585862" />
+            <corners android:radius="18dp" />
+            <stroke
+                android:width="1dp"
+                android:color="#1A1A1C" />
+        </shape>
+    </item>
+</layer-list>

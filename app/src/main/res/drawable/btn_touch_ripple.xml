@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Transparent touch zone for rocker halves and D-pad arms: fully invisible
+     at rest (keeps the pill / cross seamless), subtle white ripple while
+     pressed. Native ripple drawable, no dependencies. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33FFFFFF">
+    <item android:drawable="@android:color/transparent" />
+</ripple>
