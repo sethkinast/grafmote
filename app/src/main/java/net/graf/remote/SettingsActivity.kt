@@ -2,10 +2,14 @@ package net.graf.remote
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipDescription
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.DragEvent
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
@@ -80,20 +84,7 @@ class SettingsActivity : Activity() {
         val apps = store.loadApps()
         if (apps.isEmpty()) appList.addView(hint("No app buttons."))
         for (app in apps) {
-            val sub = if (app.launchIds().size > 1) {
-                "${app.appId} (+${app.launchIds().size - 1} fallback)"
-            } else {
-                app.appId
-            }
-            appList.addView(row(
-                "${app.label}\n$sub",
-                onEdit = { appDialog(app) },
-                onDelete = {
-                    val all = store.loadApps().filter { it.id != app.id }
-                    store.saveApps(all)
-                    render()
-                }
-            ))
+            appList.addView(appRow(app))
         }
     }
 
@@ -145,6 +136,139 @@ class SettingsActivity : Activity() {
             addView(edit)
             addView(del)
             setPadding(dp(4), dp(6), dp(4), dp(6))
+        }
+    }
+
+    /**
+     * App-button row (round 26): same Edit/Del buttons as [row], plus a drag
+     * handle (hamburger) that starts a drag-and-drop reorder. Dropping on
+     * another row moves the dragged button to that position; the new order
+     * is persisted via TvStore.saveApps, so the remote screen (which loads
+     * store order onResume) reflects it. TV rows stay non-draggable.
+     */
+    private fun appRow(app: AppButton): LinearLayout {
+        val sub = if (app.launchIds().size > 1) {
+            "${app.appId} (+${app.launchIds().size - 1} fallback)"
+        } else {
+            app.appId
+        }
+        lateinit var row: LinearLayout
+        row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            val handle = TextView(context).apply {
+                text = "☰"
+                textSize = 22f
+                gravity = android.view.Gravity.CENTER
+                contentDescription = "Drag to reorder"
+                setPadding(dp(4), dp(4), dp(12), dp(4))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            val label = TextView(context).apply {
+                this.text = "${app.label}\n$sub"
+                textSize = 16f
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val edit = Button(context).apply {
+                this.text = "Edit"
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER
+                isAllCaps = false
+                includeFontPadding = false
+                minWidth = 0
+                minimumWidth = 0
+                setBackgroundResource(R.drawable.btn_face_selector)
+                setTextColor(0xFFF2F2F2.toInt())
+                elevation = dp(1).toFloat()
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(40)
+                )
+                setOnClickListener { appDialog(app) }
+            }
+            val del = Button(context).apply {
+                this.text = "Del"
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER
+                isAllCaps = false
+                includeFontPadding = false
+                minWidth = 0
+                minimumWidth = 0
+                setBackgroundResource(R.drawable.btn_face_selector)
+                setTextColor(0xFFF2F2F2.toInt())
+                elevation = dp(1).toFloat()
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(40)
+                ).apply { marginStart = dp(8) }
+                setOnClickListener {
+                    val all = store.loadApps().filter { it.id != app.id }
+                    store.saveApps(all)
+                    render()
+                }
+            }
+            addView(handle)
+            addView(label)
+            addView(edit)
+            addView(del)
+            setPadding(dp(4), dp(6), dp(4), dp(6))
+            tag = app.id
+            setOnDragListener(appDropListener(app.id))
+            handle.setOnTouchListener { v, ev ->
+                if (ev.action == MotionEvent.ACTION_DOWN) {
+                    val data = ClipData.newPlainText("app-button", app.id)
+                    val shadow = View.DragShadowBuilder(row)
+                    v.startDragAndDrop(data, shadow, app.id, 0)
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+        return row
+    }
+
+    private fun appDropListener(targetId: String): View.OnDragListener {
+        return View.OnDragListener { v, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED ->
+                    event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                DragEvent.ACTION_DRAG_ENTERED -> {
+                    v.setBackgroundColor(0x33FFFFFF)
+                    true
+                }
+                DragEvent.ACTION_DRAG_EXITED, DragEvent.ACTION_DRAG_ENDED -> {
+                    v.setBackgroundColor(0x00000000)
+                    true
+                }
+                DragEvent.ACTION_DROP -> {
+                    v.setBackgroundColor(0x00000000)
+                    val draggedId = try {
+                        event.clipData?.getItemAt(0)?.text?.toString()
+                            ?: event.localState as? String
+                    } catch (_: Exception) {
+                        event.localState as? String
+                    }.orEmpty()
+                    if (draggedId.isBlank() || draggedId == targetId) return@OnDragListener true
+                    val all = store.loadApps()
+                    val dragged = all.firstOrNull { it.id == draggedId } ?: return@OnDragListener true
+                    all.removeAll { it.id == draggedId }
+                    val targetIdx = all.indexOfFirst { it.id == targetId }
+                    if (targetIdx < 0) {
+                        all.add(dragged)
+                    } else {
+                        all.add(targetIdx, dragged)
+                    }
+                    store.saveApps(all)
+                    render()
+                    true
+                }
+                else -> true
+            }
         }
     }
 

@@ -139,6 +139,13 @@
   "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202009021808/icon_198x198_20210921110356722.png"
  },
  {
+  "name": "Jellyfin",
+  "ids": [
+   "AprZAARz4r.Jellyfin"
+  ],
+  "icon": "https://play-lh.googleusercontent.com/XgiPOkdSUqB34EI3FFMSC67SCaJ3Dv5ePkBPoHnB9J-3gwpY2VvQv5dx2e7gDJ-Z12MGbBwaestu8coKYAM1ZqU=w240-h480-rw"
+ },
+ {
   "name": "MLB",
   "ids": [
    "3201603008210"

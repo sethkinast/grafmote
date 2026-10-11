@@ -368,11 +368,12 @@
         android:layout_marginBottom="6dp"
         android:background="#2E2E33" />
 
-    <!-- App tiles: centered when they fit, left-scrolling on overflow.
-         fillViewport forces the row to at least the viewport width;
-         match_parent + center gravity centers a short row, while a wide
-         row simply grows past the viewport and scrolls from the left. -->
+    <!-- App tiles: 1-8 tiles wrap to up to two centered rows of 4
+         (partial second row centered); 9+ fall back to today's
+         horizontally scrolling single row. The visible container wraps its
+         height (one row for <=4, two rows for 5-8). -->
     <HorizontalScrollView
+        android:id="@+id/appsScroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:fillViewport="true">
@@ -386,4 +387,30 @@
             android:paddingTop="4dp"
             android:paddingBottom="4dp" />
     </HorizontalScrollView>
+
+    <LinearLayout
+        android:id="@+id/appsGrid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/appsRowTop"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="horizontal"
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp" />
+
+        <LinearLayout
+            android:id="@+id/appsRowBottom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="horizontal"
+            android:paddingTop="2dp"
+            android:paddingBottom="4dp" />
+    </LinearLayout>
 </LinearLayout>
