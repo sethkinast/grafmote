@@ -382,7 +382,7 @@ class SettingsActivity : Activity() {
         list.adapter = adapter
         list.setOnItemClickListener { _, _, pos, _ ->
             val app = visible[pos]
-            if (!selected.remove(app.primaryId())) selected.add(app.primaryId)
+            if (!selected.remove(app.primaryId)) selected.add(app.primaryId)
             adapter.notifyDataSetChanged()
         }
         search.addTextChangedListener(object : TextWatcher {
