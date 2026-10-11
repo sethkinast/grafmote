@@ -11,6 +11,8 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Spinner
@@ -51,6 +53,10 @@ class MainActivity : Activity(), TvConnection.Listener {
     private lateinit var tvSpinner: Spinner
     private lateinit var statusDot: View
     private lateinit var appsRow: LinearLayout
+    private lateinit var appsScroll: HorizontalScrollView
+    private lateinit var appsGrid: LinearLayout
+    private lateinit var appsRowTop: LinearLayout
+    private lateinit var appsRowBottom: LinearLayout
 
     private val poller = object : Runnable {
         override fun run() {
@@ -70,6 +76,10 @@ class MainActivity : Activity(), TvConnection.Listener {
         tvSpinner = findViewById(R.id.tvSpinner)
         statusDot = findViewById(R.id.statusDot)
         appsRow = findViewById(R.id.appsRow)
+        appsScroll = findViewById(R.id.appsScroll)
+        appsGrid = findViewById(R.id.appsGrid)
+        appsRowTop = findViewById(R.id.appsRowTop)
+        appsRowBottom = findViewById(R.id.appsRowBottom)
 
         // D-pad ring
         key(R.id.btnUp, "UP")
@@ -202,28 +212,68 @@ class MainActivity : Activity(), TvConnection.Listener {
         spinnerGuard = false
     }
 
+    /**
+     * App tiles (round 26): 1-8 tiles wrap to up to two centered rows of 4
+     * (1-4 = one row; 5-8 = 4 on row 1 + remainder centered on row 2);
+     * 9+ fall back to today's horizontally scrolling single row. The
+     * visible container wraps its height to content.
+     */
     private fun buildAppButtons() {
         appsRow.removeAllViews()
+        appsRowTop.removeAllViews()
+        appsRowBottom.removeAllViews()
         if (apps.isEmpty()) {
+            appsScroll.visibility = View.GONE
+            appsGrid.visibility = View.VISIBLE
+            appsRowTop.visibility = View.VISIBLE
+            appsRowBottom.visibility = View.GONE
             val t = TextView(this).apply { text = "No app buttons — add some in settings" }
-            appsRow.addView(t)
+            appsRowTop.addView(t)
             return
         }
+        if (apps.size <= 8) {
+            appsScroll.visibility = View.GONE
+            appsGrid.visibility = View.VISIBLE
+            val top = apps.take(4)
+            val bottom = apps.drop(4)
+            appsRowTop.visibility = View.VISIBLE
+            for (app in top) {
+                appsRowTop.addView(appTile(app), tileLp())
+            }
+            if (bottom.isEmpty()) {
+                appsRowBottom.visibility = View.GONE
+            } else {
+                appsRowBottom.visibility = View.VISIBLE
+                for (app in bottom) {
+                    appsRowBottom.addView(appTile(app), tileLp())
+                }
+            }
+            return
+        }
+        appsGrid.visibility = View.GONE
+        appsScroll.visibility = View.VISIBLE
         for (app in apps) {
-            val s = dp(97)
-            val lp = LinearLayout.LayoutParams(s, s).apply { setMargins(dp(4), 0, dp(4), 0) }
-            appsRow.addView(appTile(app), lp)
+            appsRow.addView(appTile(app), tileLp())
         }
     }
 
+    private fun tileLp(): LinearLayout.LayoutParams {
+        val s = dp(97)
+        return LinearLayout.LayoutParams(s, s).apply { setMargins(dp(4), 0, dp(4), 0) }
+    }
+
     /**
-     * App tile (round 21): buttons without a stored logo are today's
+     * App tile (round 26): buttons without a stored logo are today's
      * text-only tile, byte-for-byte the same look and behavior. Buttons with
-     * a logo show the image above the label inside the same tile frame —
-     * same size, same btn_face_selector pressed states, same tap behavior
-     * (tries every fallback ID in order). The ImageView starts GONE and only
-     * appears once IconLoader has the bitmap cached or downloaded, so offline
-     * tiles are exactly the text-only tile.
+     * a logo are FULL-BLEED: the image fills the tile edge-to-edge with no
+     * text label and no padding (CENTER_CROP, clipped to the same 15dp
+     * rounded face). Same size, same btn_face_selector background (so the
+     * pressed state selector is unchanged), same tap behavior (tries every
+     * fallback ID in order, per-TV winner first). A translucent pressed
+     * overlay darkens the logo while pressed so feedback stays visible over
+     * the image. The ImageView starts GONE and only appears once IconLoader
+     * has the bitmap, so an offline logo tile is the empty face (still the
+     * same size and tappable).
      */
     private fun appTile(app: AppButton): View {
         val launch = launch@{ v: View, tile: View ->
@@ -252,35 +302,25 @@ class MainActivity : Activity(), TvConnection.Listener {
                 setOnClickListener { v -> launch(v, this) }
             }
         }
-        val tile = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+        val tile = FrameLayout(this).apply {
             setBackgroundResource(R.drawable.btn_face_selector)
             elevation = dp(1).toFloat()
             isClickable = true
             isFocusable = true
+            clipToOutline = true
+            foreground = resources.getDrawable(R.drawable.tile_logo_pressed_overlay, theme)
         }
         val iv = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
+            scaleType = ImageView.ScaleType.CENTER_CROP
             contentDescription = app.label
             visibility = View.GONE
-            layoutParams = LinearLayout.LayoutParams(dp(50), dp(50)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-        }
-        val label = TextView(this).apply {
-            text = app.label
-            textSize = 12f
-            maxLines = 2
-            gravity = Gravity.CENTER
-            setPadding(dp(4), dp(2), dp(4), 0)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
+            setPadding(0, 0, 0, 0)
         }
         tile.addView(iv)
-        tile.addView(label)
         tile.setOnClickListener { v -> launch(v, tile) }
         IconLoader.loadInto(iv, icon)
         return tile
