@@ -178,7 +178,7 @@ class MainActivity : Activity(), TvConnection.Listener {
             // Square-ish rounded tiles with the same top-right-light gradient.
             val b = Button(this).apply {
                 text = app.label
-                textSize = 13f
+                textSize = 14f
                 maxLines = 2
                 gravity = Gravity.CENTER
                 setBackgroundResource(R.drawable.btn_face_selector)
@@ -197,7 +197,7 @@ class MainActivity : Activity(), TvConnection.Listener {
                     }
                 }
             }
-            val s = dp(88)
+            val s = dp(97)
             val lp = LinearLayout.LayoutParams(s, s).apply { setMargins(dp(4), 0, dp(4), 0) }
             appsRow.addView(b, lp)
         }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- UP arrow touch zone: transparent at rest (cross stays seamless), darker
+     up-arm overlay + ripple while pressed. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <ripple android:color="#33FFFFFF">
+            <item android:drawable="@drawable/btn_dpad_up_pressed" />
+        </ripple>
+    </item>
+    <item android:drawable="@android:color/transparent" />
+</selector>

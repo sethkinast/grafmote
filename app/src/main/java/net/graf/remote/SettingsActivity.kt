@@ -76,23 +76,51 @@ class SettingsActivity : Activity() {
     private fun row(text: String, onEdit: () -> Unit, onDelete: () -> Unit): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
             val label = TextView(context).apply {
                 this.text = text
                 textSize = 16f
+                gravity = android.view.Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val edit = Button(context).apply {
                 this.text = "Edit"
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER
+                isAllCaps = false
+                includeFontPadding = false
+                minWidth = 0
+                minimumWidth = 0
+                setBackgroundResource(R.drawable.btn_face_selector)
+                setTextColor(0xFFF2F2F2.toInt())
+                elevation = dp(1).toFloat()
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(40)
+                )
                 setOnClickListener { onEdit() }
             }
             val del = Button(context).apply {
                 this.text = "Del"
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER
+                isAllCaps = false
+                includeFontPadding = false
+                minWidth = 0
+                minimumWidth = 0
+                setBackgroundResource(R.drawable.btn_face_selector)
+                setTextColor(0xFFF2F2F2.toInt())
+                elevation = dp(1).toFloat()
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(40)
+                ).apply { marginStart = dp(8) }
                 setOnClickListener { onDelete() }
             }
             addView(label)
             addView(edit)
             addView(del)
-            setPadding(0, dp(4), 0, dp(4))
+            setPadding(dp(4), dp(6), dp(4), dp(6))
         }
     }
 
