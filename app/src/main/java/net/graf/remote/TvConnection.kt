@@ -9,6 +9,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -38,6 +39,12 @@ import javax.net.ssl.X509TrustManager
  *   prompt; on Allow the server sends ms.channel.connect with a token, which
  *   is persisted per TV and sent as ?token=.. on later connects.
  * - App launch: HTTP POST http://<ip>:8001/api/v2/applications/<appId>
+ * - Installed-app list: WebSocket emit
+ *   {"method":"ms.channel.emit","params":{"event":"ed.installedApp.get","to":"host"}}
+ *   answered by an "ed.installedApp.get" event carrying [{appId, name,
+ *   app_type}] under data.data (also accepted directly under data).
+ *   GET http://<ip>:8001/api/v2/applications/list DOES NOT EXIST (404s).
+ *   Some firmware never answers; that is "unavailable", not an error.
  * - Power on: Wake-on-LAN magic packet (UDP 255.255.255.255:7, hex
  *   FFFFFFFFFFFF + 16x MAC) then KEY_POWER Press, wait ~3s, Release.
  *   Power off: KEY_POWER Click. Power state: REST device.PowerState.
@@ -92,6 +99,12 @@ class TvConnection(private val store: TvStore) {
     private var wolGen = 0
     private val pending = ArrayDeque<String>()
     private var sawConnectEvent = false
+
+    /** Installed-app entry from the ed.installedApp.get WebSocket answer. */
+    data class AppInfo(val appId: String, val name: String)
+
+    private var installedAppsCb: ((List<AppInfo>?) -> Unit)? = null
+    private var installedAppsTimeout: Runnable? = null
 
     fun currentState(): State = connState
 
@@ -339,7 +352,124 @@ class TvConnection(private val store: TvStore) {
         }
     }
 
+    /**
+     * Query the installed-app list over the remote-control WebSocket
+     * (reference samsungtvws library + Samsung Tizen docs):
+     * send {"method":"ms.channel.emit","params":{"event":"ed.installedApp.get","to":"host"}}
+     * and the TV answers with an event also named "ed.installedApp.get" whose
+     * payload carries [{appId, name, app_type}] nested under data.data
+     * (tolerantly also accepted directly under data).
+     *
+     * GET http://<tv>:8001/api/v2/applications/list DOES NOT EXIST (404s).
+     * App launch stays REST: POST http://<tv>:8001/api/v2/applications/<appId>.
+     *
+     * Not all firmware answers; no answer within timeoutMs calls back null
+     * ("unavailable", not an error). Callback runs on the main thread.
+     * Reuses the existing connect path: ensures the socket is open, queues
+     * the emit when down, and flushes it on open/connect like key frames.
+     */
+    fun queryInstalledApps(tv: Tv, timeoutMs: Long = 10000, cb: (List<AppInfo>?) -> Unit) {
+        exec.execute { queryInstalledAppsLocked(tv, timeoutMs, cb) }
+    }
+
+    private fun queryInstalledAppsLocked(tv: Tv, timeoutMs: Long, cb: (List<AppInfo>?) -> Unit) {
+        synchronized(this) {
+            installedAppsCb?.let { prev ->
+                main.post { prev(null) }
+            }
+            installedAppsCb = null
+            installedAppsTimeout?.let { main.removeCallbacks(it) }
+            installedAppsTimeout = null
+            installedAppsCb = cb
+            val timeout = Runnable {
+                val taken: ((List<AppInfo>?) -> Unit)?
+                synchronized(this) {
+                    taken = installedAppsCb
+                    installedAppsCb = null
+                    installedAppsTimeout = null
+                }
+                taken?.invoke(null)
+            }
+            installedAppsTimeout = timeout
+            main.postDelayed(timeout, timeoutMs)
+        }
+        if (activeTvId != tv.id) {
+            activeTvId = tv.id
+            generation++
+            sawConnectEvent = false
+            try {
+                socket?.close(1000, "switch")
+            } catch (_: Exception) {
+            }
+            socket = null
+            connectLocked(tv)
+        }
+        val frame = JSONObject()
+            .put("method", "ms.channel.emit")
+            .put(
+                "params",
+                JSONObject()
+                    .put("event", "ed.installedApp.get")
+                    .put("to", "host")
+            )
+            .toString()
+        val ws = socket
+        if (ws != null && connState == State.OPEN) {
+            var sent = false
+            try {
+                sent = ws.send(frame)
+            } catch (_: Exception) {
+                sent = false
+            }
+            if (!sent) {
+                pending.add(frame)
+                reconnectNowLocked(tv)
+            }
+        } else {
+            pending.add(frame)
+            // A live socket awaiting the on-TV Allow/Deny prompt must not be
+            // torn down — the queue flushes on ms.channel.connect.
+            if (connState == State.WAITING_APPROVAL && socket != null) return
+            reconnectNowLocked(tv)
+        }
+    }
+
+    private fun completeInstalledApps(apps: List<AppInfo>?) {
+        val taken: ((List<AppInfo>?) -> Unit)?
+        synchronized(this) {
+            taken = installedAppsCb
+            installedAppsCb = null
+            installedAppsTimeout?.let { main.removeCallbacks(it) }
+            installedAppsTimeout = null
+        }
+        if (taken != null) main.post { taken.invoke(apps) }
+    }
+
+    private fun parseInstalledAppsPayload(msg: JSONObject): List<AppInfo>? {
+        val raw = msg.opt("data") ?: return null
+        val arr: JSONArray = when (raw) {
+            is JSONArray -> raw
+            is JSONObject -> {
+                val inner = raw.opt("data") ?: return null
+                when (inner) {
+                    is JSONArray -> inner
+                    else -> return null
+                }
+            }
+            else -> return null
+        }
+        val out = mutableListOf<AppInfo>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val appId = o.optString("appId").trim()
+            val name = o.optString("name").trim()
+            if (appId.isNotEmpty() && name.isNotEmpty()) out.add(AppInfo(appId, name))
+        }
+        return out.sortedBy { it.name.lowercase() }
+    }
+
     fun close() {
+        completeInstalledApps(null)
         exec.execute {
             generation++
             wolGen++
@@ -428,6 +558,10 @@ class TvConnection(private val store: TvStore) {
         override fun onMessage(ws: WebSocket, text: String) {
             try {
                 val msg = JSONObject(text)
+                if (msg.optString("event") == "ed.installedApp.get") {
+                    completeInstalledApps(parseInstalledAppsPayload(msg))
+                    return
+                }
                 if (msg.optString("event") == "ms.channel.connect") {
                     val token = msg.optJSONObject("data")?.optString("token", "") ?: ""
                     if (token.isNotEmpty() && token != tv.token) {

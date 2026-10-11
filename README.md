@@ -33,7 +33,15 @@ driver by Dave Gutheinz
 - Token TVs use a self-signed cert; the app trusts it on a dedicated
   OkHttpClient used ONLY for TV sockets (see `TvConnection.kt` comments).
   Same tradeoff as the Hubitat driver's `ignoreSSLIssues:true`.
-- Apps: `POST http://<tv>:8001/api/v2/applications/<appId>`
+- Apps: launch via `POST http://<tv>:8001/api/v2/applications/<appId>`
+  (this works). The installed-app list is NOT REST
+  (`GET http://<tv>:8001/api/v2/applications/list` DOES NOT EXIST — it 404s):
+  it is queried over the remote-control WebSocket by sending
+  `{"method":"ms.channel.emit","params":{"event":"ed.installedApp.get","to":"host"}}`.
+  The TV answers with an `ed.installedApp.get` event carrying
+  `[{appId, name, app_type}]` under `data.data` (also accepted directly
+  under `data`). Older firmware never answers; the picker treats that as
+  "unavailable", not an error.
 - Power on: WoL magic packet (UDP 255.255.255.255:7) + `KEY_POWER` Press,
   ~3s, Release. Power off: `KEY_POWER` Click.
 
@@ -57,9 +65,10 @@ driver by Dave Gutheinz
 | Netflix | `org.tizen.netflix-app`  | Hubitat driver translation table |
 | YouTube | `9Ur5IzDKqV.TizenYouTube`| Hubitat driver `appIdList` |
 
-If a button stops working (Samsung changes IDs), list the TV's real IDs at
-`http://<tv-ip>:8001/api/v2/applications/list` and edit the button in
-Settings — no reinstall needed.
+If a button stops working (Samsung changes IDs), use "Add apps" in
+Settings — it lists the TV's real IDs over the WebSocket
+(`ed.installedApp.get` emit, answered under `data.data`) — and edit the
+button — no reinstall needed.
 
 ## Build
 
