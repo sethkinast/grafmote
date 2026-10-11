@@ -131,8 +131,8 @@ class TvStore(ctx: Context) {
     private fun defaultApps(): List<AppButton> = listOf(
         // IDs verified: Jellyfin from the official jellyfin-tizen config.xml
         // (tizen:application id); the rest from the Hubitat driver appIdList /
-        // translation table. If any stop working, confirm against the live TV:
-        // http://<tv-ip>:8001/api/v2/applications/list
+        // translation table. If any stop working, use Settings "Add apps"
+        // (WebSocket ed.installedApp.get picker) to confirm the live TV IDs.
         AppButton(UUID.randomUUID().toString(), "Jellyfin", "AprZAARz4r.Jellyfin"),
         AppButton(UUID.randomUUID().toString(), "Disney+", "MCmYXNxgcu.DisneyPlus"),
         AppButton(UUID.randomUUID().toString(), "Netflix", "org.tizen.netflix-app"),
