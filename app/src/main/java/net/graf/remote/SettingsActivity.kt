@@ -619,20 +619,32 @@ class SettingsActivity : Activity() {
 
     /**
      * Round 30: the container is the ONLY hover target — rows carry no
-     * drag listeners of their own. Every ENTERED/LOCATION hit-tests by
+     * drag listeners of their own. Every LOCATION hit-tests by
      * gapless coordinates (handleHover), so no pixel belongs to no row.
      *
      * Round 32: touches outside the row span (including past-the-last-row)
      * HOLD the last valid placeholder position instead of resolving to an
      * end slot — the ends stay reachable by hovering the end rows, and a
      * drop past the last row commits the held (append) position.
+     *
+     * Round 39: ACTION_DRAG_ENTERED never drives the hit-test — it
+     * carries y=0.0 on child→parent re-entry (proven by logcat tag
+     * GrafDND: drag exiting the placeholder, which swallows events with
+     * its own listener, then re-entering the container delivers ENTERED
+     * with y=0.0, which hit-tests to the first row above=true and
+     * applies an instant adjacent 1→0 move for one frame before the next
+     * real LOCATION recovers). Only ACTION_DRAG_LOCATION carries real
+     * coordinates. This loses nothing: round 35 already places the
+     * placeholder at the dragged row's original index at drag start, and
+     * every subsequent real position arrives via LOCATION.
      */
     private fun appListDropListener(): View.OnDragListener {
         return View.OnDragListener { _, event ->
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED ->
                     event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
-                DragEvent.ACTION_DRAG_ENTERED, DragEvent.ACTION_DRAG_LOCATION -> {
+                DragEvent.ACTION_DRAG_ENTERED -> true
+                DragEvent.ACTION_DRAG_LOCATION -> {
                     if (draggedAppId != null) handleHover(event.y)
                     true
                 }
