@@ -19,7 +19,8 @@ import android.widget.Toast
 /**
  * Single-activity remote. Cold-start path is deliberately trivial: inflate the
  * cached layout, wire click listeners (taps queue until the socket opens —
- * buttons are live instantly), then connect + poll in the background.
+ * buttons are live instantly and NEVER gated on connection state), then
+ * connect + poll in the background.
  * No custom Application class, no ContentProviders, no DI, no Compose.
  *
  * Header shows each TV once (in the selector) with a two-state LED dot:
@@ -27,6 +28,8 @@ import android.widget.Toast
  * unreachable are indistinguishable from the phone, so there is no third
  * state. Transient states (connecting / approval prompts) surface as brief
  * toasts on state transitions only — there is no persistent status text.
+ * The LED is truthful but never gates input: every button always attempts
+ * to send, kicking an immediate reconnect when the socket is down.
  */
 class MainActivity : Activity(), TvConnection.Listener {
 
@@ -110,11 +113,21 @@ class MainActivity : Activity(), TvConnection.Listener {
         apps = store.loadApps()
         buildSpinner()
         buildAppButtons()
-        // Silent reconnect: switchTo(force=true) drops any stale socket and
-        // reconnects without any user-visible error. Any late failure callback
-        // from the old socket is sanitized (see renderStatus).
+        // Foreground kick (round 19): same-TV foregrounding keeps the
+        // last-known LED/state and silently re-checks via foregroundCheck —
+        // no stale "disconnected" flash while the check is in flight, and no
+        // user-visible error. Full switch only when the target actually
+        // changed (first start, TV added/removed/reselected in settings).
         val last = store.lastTvId()?.let { id -> tvs.firstOrNull { it.id == id } }
-        switchTo(last ?: tvs.firstOrNull(), force = true)
+        val target = last ?: tvs.firstOrNull()
+        if (target == null) {
+            switchTo(null, force = true)
+        } else if (target.id != current?.id) {
+            switchTo(target, force = true)
+        } else {
+            conn.foregroundCheck(target)
+            conn.refreshInfo(target) { p -> power = p }
+        }
         ui.post(poller)
     }
 
@@ -128,6 +141,11 @@ class MainActivity : Activity(), TvConnection.Listener {
         super.onDestroy()
     }
 
+    /**
+     * Remote keys are NEVER gated on connection state (round 19): every tap
+     * attempts to send — TvConnection queues the frame and kicks an
+     * immediate reconnect when the socket is down.
+     */
     private fun key(viewId: Int, samsungKey: String) {
         findViewById<View>(viewId).setOnClickListener { v ->
             Haptics.tick(v, hapticEnabled())

@@ -88,6 +88,8 @@ class TvConnection(private val store: TvStore) {
     @Volatile private var connState: State = State.IDLE
     /** Bumped on every (re)connect so a stale scheduled reconnect never fires. */
     private var generation = 0
+    /** Bumped to cancel the WoL aggressive-reconnect loop (TV switch/close). */
+    private var wolGen = 0
     private val pending = ArrayDeque<String>()
     private var sawConnectEvent = false
 
@@ -97,6 +99,7 @@ class TvConnection(private val store: TvStore) {
     fun selectTv(tv: Tv?) {
         exec.execute {
             generation++
+            wolGen++
             try {
                 socket?.close(1000, "switch")
             } catch (_: Exception) {
@@ -113,9 +116,18 @@ class TvConnection(private val store: TvStore) {
         }
     }
 
-    /** Send a remote key. Optimistic: taps queue until the socket is open. */
+    /**
+     * Send a remote key. NEVER gated on connection state (round 19): every
+     * tap is queued and fires when the socket opens, and a down socket kicks
+     * an IMMEDIATE reconnect — never waits for the next poll tick.
+     */
     fun sendKey(tv: Tv, key: String, cmd: String = "Click") {
-        val frame = JSONObject()
+        val frame = buildKeyFrame(key, cmd)
+        exec.execute { sendKeyLocked(tv, frame) }
+    }
+
+    private fun buildKeyFrame(key: String, cmd: String): String =
+        JSONObject()
             .put("method", "ms.remote.control")
             .put(
                 "params",
@@ -126,10 +138,97 @@ class TvConnection(private val store: TvStore) {
                     .put("TypeOfRemote", "SendRemoteKey")
             )
             .toString()
+
+    /** sendKey body; runs on exec. Always queues — never drops on state. */
+    private fun sendKeyLocked(tv: Tv, frame: String) {
+        if (activeTvId != tv.id) {
+            activeTvId = tv.id
+            generation++
+            sawConnectEvent = false
+            try {
+                socket?.close(1000, "switch")
+            } catch (_: Exception) {
+            }
+            socket = null
+            connectLocked(tv)
+        }
+        val ws = socket
+        if (ws != null && connState == State.OPEN) {
+            var sent = false
+            try {
+                sent = ws.send(frame)
+            } catch (_: Exception) {
+                sent = false
+            }
+            if (sent) return
+            // Direct send failed (half-open socket): queue + reconnect now.
+            pending.add(frame)
+            reconnectNowLocked(tv)
+        } else {
+            pending.add(frame)
+            // A live socket awaiting the on-TV Allow/Deny prompt must not be
+            // torn down — the queue flushes on ms.channel.connect.
+            if (connState == State.WAITING_APPROVAL && socket != null) return
+            reconnectNowLocked(tv)
+        }
+    }
+
+    /**
+     * Immediate reconnect kick (round 19). No-op while OPEN or while a
+     * connect is already in flight. Runs on exec.
+     */
+    private fun reconnectNowLocked(tv: Tv) {
+        if (tv.id != activeTvId) return
+        if (connState == State.OPEN || connState == State.CONNECTING) return
+        if (connState == State.WAITING_APPROVAL && socket != null) return
+        try {
+            socket?.close(1000, "retry")
+        } catch (_: Exception) {
+        }
+        socket = null
+        connectLocked(tv)
+    }
+
+    /**
+     * Foreground kick (round 19): immediate check/reconnect for onResume
+     * without flashing a stale "disconnected" state. Same-TV foregrounding
+     * keeps the last-known UI state — only CONNECTING is emitted, and
+     * OPEN/UNREACHABLE arrive when the check actually resolves. Silent: no
+     * error ever surfaces (see onGone/setState).
+     */
+    fun foregroundCheck(tv: Tv) {
+        exec.execute {
+            if (tv.id != activeTvId) {
+                generation++
+                wolGen++
+                try {
+                    socket?.close(1000, "switch")
+                } catch (_: Exception) {
+                }
+                socket = null
+                pending.clear()
+                sawConnectEvent = false
+                activeTvId = tv.id
+                connectLocked(tv)
+                return@execute
+            }
+            reconnectNowLocked(tv)
+        }
+    }
+
+    /**
+     * Power toggle. lastPower comes from the REST poll ("on"/"off"/"unknown").
+     * TV on  -> KEY_POWER Click (off). Anything else -> WoL + Press/Release (on).
+     * Buttons are never gated: Press/Release queue and fire when the socket
+     * opens. Never blocks the exec thread (the old Thread.sleep stalled all
+     * queued keys and scheduled reconnects); Release is scheduled instead.
+     */
+    fun togglePower(tv: Tv, lastPower: String) {
         exec.execute {
             if (activeTvId != tv.id) {
                 activeTvId = tv.id
                 generation++
+                wolGen++
                 sawConnectEvent = false
                 try {
                     socket?.close(1000, "switch")
@@ -138,35 +237,44 @@ class TvConnection(private val store: TvStore) {
                 socket = null
                 connectLocked(tv)
             }
-            val ws = socket
-            if (ws != null && connState == State.OPEN) {
-                if (!ws.send(frame)) pending.add(frame)
+            if (lastPower == "on") {
+                sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
             } else {
-                pending.add(frame)
-                if (ws == null && connState != State.CONNECTING) connectLocked(tv)
+                sendWol(tv.wifiMac)
+                sendKeyLocked(tv, buildKeyFrame("POWER", "Press"))
+                // Aggressive reconnect loop until the TV accepts the socket —
+                // never relies on the passive poll timer to notice boot.
+                startWolLoopLocked(tv)
+                // Mirror the driver: hold POWER Press ~3s then Release.
+                exec.schedule({
+                    if (tv.id == activeTvId) sendKeyLocked(tv, buildKeyFrame("POWER", "Release"))
+                }, 3, TimeUnit.SECONDS)
             }
         }
     }
 
     /**
-     * Power toggle. lastPower comes from the REST poll ("on"/"off"/"unknown").
-     * TV on  -> KEY_POWER Click (off). Anything else -> WoL + Press/Release (on).
+     * WoL flow (round 19): after the magic packet, retry the control socket
+     * on a short ~2s interval until the TV accepts it. Cancelled when OPEN,
+     * on TV switch/close (wolGen/activeTvId), or after ~2 min (60 tries) as a
+     * backstop so a TV that never boots stops retrying. Coexists with
+     * scheduleReconnect: both guard on socket==null/CONNECTING, so whichever
+     * fires first wins and the other skips. Runs on exec.
      */
-    fun togglePower(tv: Tv, lastPower: String) {
-        exec.execute {
-            if (lastPower == "on") {
-                sendKey(tv, "POWER", "Click")
-            } else {
-                sendWol(tv.wifiMac)
-                // Mirror the driver: hold POWER Press ~3s then Release.
-                sendKey(tv, "POWER", "Press")
-                try {
-                    Thread.sleep(3000)
-                } catch (_: InterruptedException) {
-                }
-                sendKey(tv, "POWER", "Release")
-            }
+    private fun startWolLoopLocked(tv: Tv, maxAttempts: Int = 60) {
+        wolGen++
+        val my = wolGen
+        fun tick(attempt: Int) {
+            exec.schedule({
+                if (my != wolGen) return@schedule
+                if (tv.id != activeTvId) return@schedule
+                if (connState == State.OPEN) return@schedule
+                if (attempt >= maxAttempts) return@schedule
+                if (socket == null && connState != State.CONNECTING) connectLocked(tv)
+                tick(attempt + 1)
+            }, 2, TimeUnit.SECONDS)
         }
+        tick(0)
     }
 
     /** Fetch REST device info; updates stored tokenSupport/wifiMac; reports power. */
@@ -233,6 +341,8 @@ class TvConnection(private val store: TvStore) {
 
     fun close() {
         exec.execute {
+            generation++
+            wolGen++
             try {
                 socket?.close(1000, "close")
             } catch (_: Exception) {
