@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pressed overlay for the LEFT arm of the D-pad cross: darker variant,
+     left corners match the bar end radius, right square to melt in. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="45"
+        android:startColor="#222226"
+        android:endColor="#3D3D45" />
+    <corners
+        android:topLeftRadius="24dp"
+        android:bottomLeftRadius="24dp"
+        android:topRightRadius="0dp"
+        android:bottomRightRadius="0dp" />
+</shape>

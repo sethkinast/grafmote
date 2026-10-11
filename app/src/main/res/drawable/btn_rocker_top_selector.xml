@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TOP rocker half touch zone: transparent at rest (pill stays seamless),
+     darker top-half overlay + ripple while pressed. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <ripple android:color="#33FFFFFF">
+            <item android:drawable="@drawable/btn_rocker_top_pressed" />
+        </ripple>
+    </item>
+    <item android:drawable="@android:color/transparent" />
+</selector>

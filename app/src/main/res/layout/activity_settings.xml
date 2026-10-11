@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Round 18 visual pass: settings matches the remote — same dimensional
+     dark button faces (btn_face_selector: top-right light, angle=45, slight
+     15dp radius, darker pressed variant) with 1dp elevation instead of flat
+     gray rectangles, section headers + rows sharing one alignment gutter,
+     inset rules echoing the remote's divider. IDs, view types, and structure
+     are unchanged (tvList/appList LinearLayouts; btnAddTv/btnScan/btnAddApp/
+     btnDone Buttons) so all wiring is untouched. Visual pass only. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -12,7 +19,10 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="8dp"
             android:text="TVs"
+            android:textColor="#f2f2f2"
             android:textSize="18sp" />
 
         <LinearLayout
@@ -24,29 +34,56 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="16dp">
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="16dp"
+            android:orientation="horizontal">
 
             <Button
                 android:id="@+id/btnAddTv"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginEnd="4dp"
                 android:layout_weight="1"
-                android:text="Add TV" />
+                android:background="@drawable/btn_face_selector"
+                android:elevation="1dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="48dp"
+                android:text="Add TV"
+                android:textColor="#f2f2f2" />
 
             <Button
                 android:id="@+id/btnScan"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
                 android:layout_weight="1"
-                android:text="Scan LAN" />
+                android:background="@drawable/btn_face_selector"
+                android:elevation="1dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="48dp"
+                android:text="Scan LAN"
+                android:textColor="#f2f2f2" />
         </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:layout_marginBottom="16dp"
+            android:background="#2E2E33" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="8dp"
             android:text="App buttons"
+            android:textColor="#f2f2f2"
             android:textSize="18sp" />
 
         <LinearLayout
@@ -59,15 +96,37 @@
             android:id="@+id/btnAddApp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Add app button" />
+            android:layout_marginTop="8dp"
+            android:background="@drawable/btn_face_selector"
+            android:elevation="1dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:minWidth="0dp"
+            android:minHeight="48dp"
+            android:text="Add app button"
+            android:textColor="#f2f2f2" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="4dp"
+            android:layout_marginBottom="16dp"
+            android:background="#2E2E33" />
 
         <Button
             android:id="@+id/btnDone"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
             android:layout_marginBottom="16dp"
-            android:text="Done" />
+            android:background="@drawable/btn_face_selector"
+            android:elevation="1dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:minWidth="0dp"
+            android:minHeight="48dp"
+            android:text="Done"
+            android:textColor="#f2f2f2" />
     </LinearLayout>
 </ScrollView>

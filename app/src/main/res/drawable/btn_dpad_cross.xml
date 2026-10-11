@@ -9,27 +9,27 @@
      only visible face. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item
-        android:width="80dp"
-        android:height="250dp"
+        android:width="88dp"
+        android:height="275dp"
         android:gravity="center">
         <shape android:shape="rectangle">
             <gradient
                 android:angle="45"
                 android:startColor="#2E2E33"
                 android:endColor="#585862" />
-            <corners android:radius="22dp" />
+            <corners android:radius="24dp" />
         </shape>
     </item>
     <item
-        android:width="250dp"
-        android:height="80dp"
+        android:width="275dp"
+        android:height="88dp"
         android:gravity="center">
         <shape android:shape="rectangle">
             <gradient
                 android:angle="45"
                 android:startColor="#2E2E33"
                 android:endColor="#585862" />
-            <corners android:radius="22dp" />
+            <corners android:radius="24dp" />
         </shape>
     </item>
 </layer-list>
