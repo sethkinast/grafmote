@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.CheckBox
@@ -49,6 +50,15 @@ class SettingsActivity : Activity() {
      * on the first row mid-drag) is held, never applied.
      */
     private var pendingJumpIndex: Int? = null
+    /**
+     * Round 35: settle gate. True from drag start (row GONE + placeholder
+     * inserted at the original index) until the post-insert layout pass
+     * completes. While true, hover events hold the placeholder at its
+     * start slot instead of hit-testing against stale mid-layout geometry
+     * (top-half-of-B reading as "above A" -> index 0).
+     */
+    private var dragSettling = false
+    private var dragSettleListener: ViewTreeObserver.OnGlobalLayoutListener? = null
 
     /** ViewHolder for catalog browser rows (row.tag). See showCatalogBrowser. */
     private data class CatalogRow(
@@ -217,6 +227,7 @@ class SettingsActivity : Activity() {
                     draggedAppId = app.id
                     draggedRowHeight = row.height
                     draggedRow = row
+                    val startIndex = appList.indexOfChild(row)
                     val tx = ev.x.toInt()
                     val ty = ev.y.toInt()
                     val shadowView = buildAppRowShadow(app, sub, row)
@@ -227,6 +238,43 @@ class SettingsActivity : Activity() {
                     // models the future slot, so the visible list never
                     // keeps a gap where the row was.
                     row.visibility = View.GONE
+                    // Round 35: insert the placeholder at the dragged row's
+                    // ORIGINAL index — no hit-testing, no 50/50 computation
+                    // at start, so the placeholder always begins exactly
+                    // where the row was regardless of where in the row the
+                    // touch landed. Then gate hover moves until layout
+                    // settles (one-shot global-layout listener, not a
+                    // posted Runnable) so stale mid-layout geometry can't
+                    // jump the placeholder on the first hover frames.
+                    dragSettling = true
+                    pendingJumpIndex = null
+                    val ph = ensurePlaceholder()
+                    (ph.parent as? ViewGroup)?.removeView(ph)
+                    appList.addView(ph, startIndex.coerceIn(0, appList.childCount))
+                    dragSettleListener?.let { prev ->
+                        try {
+                            appList.viewTreeObserver.removeOnGlobalLayoutListener(prev)
+                        } catch (_: Exception) {
+                        }
+                    }
+                    val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
+                        override fun onGlobalLayout() {
+                            try {
+                                appList.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                            } catch (_: Exception) {
+                            }
+                            if (dragSettleListener === this) dragSettleListener = null
+                            dragSettling = false
+                            pendingJumpIndex = null
+                        }
+                    }
+                    dragSettleListener = listener
+                    try {
+                        appList.viewTreeObserver.addOnGlobalLayoutListener(listener)
+                    } catch (_: Exception) {
+                        dragSettleListener = null
+                        dragSettling = false
+                    }
                     true
                 } else {
                     false
@@ -355,6 +403,9 @@ class SettingsActivity : Activity() {
      */
     private fun handleHover(y: Float) {
         if (draggedAppId == null) return
+        // Round 35: settle gate — hold the start slot until the
+        // post-insert layout pass completes; never hit-test mid-layout.
+        if (dragSettling) return
         // No confident coordinate, no move.
         if (!y.isFinite()) {
             pendingJumpIndex = null
@@ -491,6 +542,14 @@ class SettingsActivity : Activity() {
     }
 
     private fun clearDragState() {
+        dragSettleListener?.let { listener ->
+            try {
+                appList.viewTreeObserver.removeOnGlobalLayoutListener(listener)
+            } catch (_: Exception) {
+            }
+        }
+        dragSettleListener = null
+        dragSettling = false
         dragPlaceholder?.let { (it.parent as? ViewGroup)?.removeView(it) }
         dragPlaceholder = null
         draggedAppId = null
