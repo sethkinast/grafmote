@@ -42,6 +42,13 @@ class SettingsActivity : Activity() {
     private var draggedRowHeight: Int = 0
     private var draggedRow: View? = null
     private var dragPlaceholder: View? = null
+    /**
+     * Round 32: pending long-jump placeholder index. A move of more than
+     * one slot is applied only when two consecutive hover events agree on
+     * the same destination — a single-frame glitch (e.g. a spurious hit
+     * on the first row mid-drag) is held, never applied.
+     */
+    private var pendingJumpIndex: Int? = null
 
     /** ViewHolder for catalog browser rows (row.tag). See showCatalogBrowser. */
     private data class CatalogRow(
@@ -330,15 +337,38 @@ class SettingsActivity : Activity() {
      * so the ~1px dead zone between rows can never throw the placeholder
      * to the bottom. The GONE original row is excluded (it has no slot);
      * touch over the placeholder itself (margins included) is a no-op.
+     *
+     * Round 32: HOLD-ON-MISS debounce (the actual thrash fix — gapless
+     * hit-testing above stays as defense in depth). The placeholder moves
+     * ONLY on a confident new hit; every no-confident-hit case holds the
+     * last valid placeholder position and returns without moving it:
+     * touch over the placeholder itself, touch over no row (above the
+     * first row / below the last row), an empty row set, an unreliable
+     * mid-layout frame (zero-height rows), a non-finite coordinate, or a
+     * gapless miss (target == null — held, never defaulted to any slot).
+     * A distant jump (>1 slot in one event, e.g. mid-list to position 0
+     * for a single frame) additionally requires a second consecutive
+     * event agreeing on the same destination before it is applied;
+     * adjacent moves stay instant. First position stays reachable by
+     * hovering the top half of the first row; above/below-50% snapping,
+     * the GONE original row, and whole-row drag are unchanged.
      */
     private fun handleHover(y: Float) {
         if (draggedAppId == null) return
+        // No confident coordinate, no move.
+        if (!y.isFinite()) {
+            pendingJumpIndex = null
+            return
+        }
         val ph = dragPlaceholder
         if (ph != null && ph.parent === appList) {
             val lp = ph.layoutParams as? LinearLayout.LayoutParams
             val top = ph.top - (lp?.topMargin ?: 0)
             val bottom = ph.bottom + (lp?.bottomMargin ?: 0)
-            if (y >= top && y <= bottom) return
+            if (y >= top && y <= bottom) {
+                pendingJumpIndex = null
+                return
+            }
         }
         val rows = mutableListOf<View>()
         for (i in 0 until appList.childCount) {
@@ -348,8 +378,27 @@ class SettingsActivity : Activity() {
             if (c.tag == draggedAppId) continue
             rows.add(c)
         }
-        if (rows.isEmpty()) return
+        if (rows.isEmpty()) {
+            pendingJumpIndex = null
+            return
+        }
         rows.sortBy { it.top }
+        // Mid-layout frame with unreliable geometry: hold, don't guess.
+        for (c in rows) {
+            if (c.height <= 0 || c.bottom <= c.top) {
+                pendingJumpIndex = null
+                return
+            }
+        }
+        // Touch above the first row or below the last row is over no row:
+        // hold the last valid position instead of snapping to an end.
+        // (Both ends stay reachable by hovering the end rows themselves.)
+        val contentTop = rows.first().top
+        val contentBottom = rows.last().bottom
+        if (y < contentTop || y > contentBottom) {
+            pendingJumpIndex = null
+            return
+        }
         var target: View? = null
         var above = true
         for (i in rows.indices) {
@@ -365,10 +414,49 @@ class SettingsActivity : Activity() {
             }
         }
         if (target == null) {
-            target = rows.last()
-            above = false
+            // Gapless hit-test missed: HOLD — never fall through to a
+            // default slot (that default is what snapped the placeholder
+            // to position 0 for single frames mid-drag).
+            pendingJumpIndex = null
+            return
         }
-        movePlaceholder(target, above)
+        movePlaceholderDebounced(target, above)
+    }
+
+    /**
+     * Round 32: debounced placeholder move. Adjacent (<=1 slot) moves apply
+     * instantly so normal dragging feels identical; a distant jump applies
+     * only when two consecutive hover events agree on the same destination
+     * insertion index, which kills single-frame thrash (e.g. ph@3 -> ph@0
+     * -> ph@1 while the finger drags steadily downward) regardless of
+     * which dead pixel or spurious coordinate caused the bad frame.
+     */
+    private fun movePlaceholderDebounced(target: View, above: Boolean) {
+        val ph = dragPlaceholder
+        val current = if (ph != null && ph.parent === appList) appList.indexOfChild(ph) else -1
+        var idx = appList.indexOfChild(target)
+        if (idx < 0) {
+            pendingJumpIndex = null
+            return
+        }
+        if (current >= 0 && idx > current) idx--
+        if (!above) idx++
+        idx = idx.coerceIn(0, appList.childCount)
+        if (current >= 0 && idx == current) {
+            pendingJumpIndex = null
+            return // already there: no-op
+        }
+        if (current < 0 || kotlin.math.abs(idx - current) <= 1) {
+            pendingJumpIndex = null
+            movePlaceholder(target, above)
+            return
+        }
+        if (pendingJumpIndex == idx) {
+            pendingJumpIndex = null
+            movePlaceholder(target, above)
+        } else {
+            pendingJumpIndex = idx
+        }
     }
 
     /**
@@ -407,6 +495,7 @@ class SettingsActivity : Activity() {
         dragPlaceholder = null
         draggedAppId = null
         draggedRowHeight = 0
+        pendingJumpIndex = null
         // Round 30: un-hide the GONE original row (commitDrop() re-renders
         // right after, so this only matters for cancelled drags).
         draggedRow?.visibility = View.VISIBLE
@@ -440,9 +529,12 @@ class SettingsActivity : Activity() {
     /**
      * Round 30: the container is the ONLY hover target — rows carry no
      * drag listeners of their own. Every ENTERED/LOCATION hit-tests by
-     * gapless coordinates (handleHover), so no pixel belongs to no row;
-     * the past-the-last-row area resolves to the last row instead of
-     * thrashing the placeholder to the bottom.
+     * gapless coordinates (handleHover), so no pixel belongs to no row.
+     *
+     * Round 32: touches outside the row span (including past-the-last-row)
+     * HOLD the last valid placeholder position instead of resolving to an
+     * end slot — the ends stay reachable by hovering the end rows, and a
+     * drop past the last row commits the held (append) position.
      */
     private fun appListDropListener(): View.OnDragListener {
         return View.OnDragListener { _, event ->
