@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipDescription
+import android.graphics.Canvas
+import android.graphics.Point
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -33,6 +35,13 @@ class SettingsActivity : Activity() {
     private lateinit var appList: LinearLayout
     private var appQueryConn: TvConnection? = null
 
+    /** Round-27 drag state: id + row height captured at drag start, plus the
+     * visible placeholder marking the would-be insertion point. */
+    private var draggedAppId: String? = null
+    private var draggedRowHeight: Int = 0
+    private var dragPlaceholder: View? = null
+    private var dragInsertIndex: Int = -1
+
     /** ViewHolder for catalog browser rows (row.tag). See showCatalogBrowser. */
     private data class CatalogRow(
         val check: CheckBox,
@@ -51,6 +60,9 @@ class SettingsActivity : Activity() {
         findViewById<Button>(R.id.btnScan).setOnClickListener { scan() }
         findViewById<Button>(R.id.btnAddApp).setOnClickListener { addAppFlow() }
         findViewById<Button>(R.id.btnDone).setOnClickListener { finish() }
+        // Container-level drop target: catches drops on gaps and past the
+        // last row (appends at the end via the placeholder position).
+        appList.setOnDragListener(appListDropListener())
     }
 
     override fun onResume() {
@@ -140,11 +152,12 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * App-button row (round 26): same Edit/Del buttons as [row], plus a drag
-     * handle (hamburger) that starts a drag-and-drop reorder. Dropping on
-     * another row moves the dragged button to that position; the new order
-     * is persisted via TvStore.saveApps, so the remote screen (which loads
-     * store order onResume) reflects it. TV rows stay non-draggable.
+     * App-button row (round 27): handle + label + Edit ONLY (Delete moved
+     * into the edit dialog). The handle starts a drag-and-drop reorder with
+     * a placeholder gap: while dragging, a visible placeholder marks the
+     * would-be insertion point (before/after each row by pointer half), and
+     * release drops exactly there — symmetric in both directions. TV rows
+     * stay non-draggable.
      */
     private fun appRow(app: AppButton): LinearLayout {
         val sub = if (app.launchIds().size > 1) {
@@ -190,39 +203,23 @@ class SettingsActivity : Activity() {
                 )
                 setOnClickListener { appDialog(app) }
             }
-            val del = Button(context).apply {
-                this.text = "Del"
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER
-                isAllCaps = false
-                includeFontPadding = false
-                minWidth = 0
-                minimumWidth = 0
-                setBackgroundResource(R.drawable.btn_face_selector)
-                setTextColor(0xFFF2F2F2.toInt())
-                elevation = dp(1).toFloat()
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(40)
-                ).apply { marginStart = dp(8) }
-                setOnClickListener {
-                    val all = store.loadApps().filter { it.id != app.id }
-                    store.saveApps(all)
-                    render()
-                }
-            }
             addView(handle)
             addView(label)
             addView(edit)
-            addView(del)
             setPadding(dp(4), dp(6), dp(4), dp(6))
             tag = app.id
             setOnDragListener(appDropListener(app.id))
             handle.setOnTouchListener { v, ev ->
                 if (ev.action == MotionEvent.ACTION_DOWN) {
+                    draggedAppId = app.id
+                    draggedRowHeight = row.height
+                    // Touch point relative to the ROW (handle sits at its
+                    // left), so the shadow originates at the handle.
+                    val tx = (handle.left + ev.x).toInt()
+                    val ty = (handle.top + ev.y).toInt()
+                    val shadowView = buildAppRowShadow(app, sub, row)
                     val data = ClipData.newPlainText("app-button", app.id)
-                    val shadow = View.DragShadowBuilder(row)
-                    v.startDragAndDrop(data, shadow, app.id, 0)
+                    v.startDragAndDrop(data, AppRowShadow(shadowView, tx, ty), app.id, 0)
                     true
                 } else {
                     false
@@ -232,6 +229,138 @@ class SettingsActivity : Activity() {
         return row
     }
 
+    /**
+     * Drag shadow (round 27): a detached clone showing handle + label ONLY
+     * (no Edit/Delete buttons) over a solid opaque background, drawn at the
+     * touch point passed in from the handle.
+     */
+    private fun buildAppRowShadow(app: AppButton, sub: String, row: LinearLayout): View {
+        val shadow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xFF2E2E33.toInt())
+            setPadding(dp(4), dp(6), dp(4), dp(6))
+            addView(TextView(context).apply {
+                text = "☰"
+                textSize = 22f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(0xFFF2F2F2.toInt())
+                setPadding(dp(4), dp(4), dp(12), dp(4))
+            })
+            addView(TextView(context).apply {
+                text = "${app.label}\n$sub"
+                textSize = 16f
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setTextColor(0xFFF2F2F2.toInt())
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        }
+        val w = if (row.width > 0) row.width else dp(320)
+        val h = if (row.height > 0) row.height else dp(52)
+        shadow.measure(
+            View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY)
+        )
+        shadow.layout(0, 0, shadow.measuredWidth, shadow.measuredHeight)
+        return shadow
+    }
+
+    private class AppRowShadow(
+        shadowView: View,
+        private val touchX: Int,
+        private val touchY: Int
+    ) : View.DragShadowBuilder(shadowView) {
+        override fun onProvideShadowMetrics(outShadowSize: Point, outShadowTouchPoint: Point) {
+            val v = view
+            val w = v?.measuredWidth?.takeIf { it > 0 } ?: v?.width ?: 0
+            val h = v?.measuredHeight?.takeIf { it > 0 } ?: v?.height ?: 0
+            outShadowSize.set(w, h)
+            outShadowTouchPoint.set(touchX.coerceIn(0, w), touchY.coerceIn(0, h))
+        }
+
+        override fun onDrawShadow(canvas: Canvas) {
+            view?.draw(canvas)
+        }
+    }
+
+    private fun ensurePlaceholder(): View {
+        dragPlaceholder?.let { return it }
+        val h = if (draggedRowHeight > 0) draggedRowHeight else dp(52)
+        val v = View(this).apply {
+            setBackgroundColor(0x33FFFFFF)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, h
+            ).apply {
+                leftMargin = dp(4)
+                rightMargin = dp(4)
+                topMargin = dp(2)
+                bottomMargin = dp(2)
+            }
+        }
+        dragPlaceholder = v
+        return v
+    }
+
+    private fun placePlaceholderBefore(target: View) {
+        val ph = ensurePlaceholder()
+        (ph.parent as? ViewGroup)?.removeView(ph)
+        val idx = appList.indexOfChild(target)
+        if (idx >= 0) appList.addView(ph, idx) else appList.addView(ph)
+        dragInsertIndex = appList.indexOfChild(ph)
+    }
+
+    private fun placePlaceholderAfter(target: View) {
+        val ph = ensurePlaceholder()
+        (ph.parent as? ViewGroup)?.removeView(ph)
+        val idx = appList.indexOfChild(target)
+        if (idx >= 0) appList.addView(ph, idx + 1) else appList.addView(ph)
+        dragInsertIndex = appList.indexOfChild(ph)
+    }
+
+    private fun placePlaceholderAtEnd() {
+        val ph = ensurePlaceholder()
+        (ph.parent as? ViewGroup)?.removeView(ph)
+        appList.addView(ph)
+        dragInsertIndex = appList.indexOfChild(ph)
+    }
+
+    /** Insertion index = non-dragged rows strictly before the placeholder. */
+    private fun placeholderInsertIndex(): Int {
+        val ph = dragPlaceholder ?: return -1
+        var count = 0
+        for (i in 0 until appList.childCount) {
+            val child = appList.getChildAt(i)
+            if (child === ph) return count
+            if (child.tag is String && child.tag != draggedAppId) count++
+        }
+        return count
+    }
+
+    private fun clearDragState() {
+        dragPlaceholder?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        dragPlaceholder = null
+        dragInsertIndex = -1
+        draggedAppId = null
+        draggedRowHeight = 0
+    }
+
+    private fun commitDrop(): Boolean {
+        val draggedId = draggedAppId ?: return false
+        val at = placeholderInsertIndex().takeIf { it >= 0 } ?: -1
+        val all = store.loadApps()
+        val dragged = all.firstOrNull { it.id == draggedId }
+        if (dragged == null) {
+            clearDragState()
+            return false
+        }
+        all.removeAll { it.id == draggedId }
+        if (at < 0) all.add(dragged) else all.add(at.coerceIn(0, all.size), dragged)
+        store.saveApps(all)
+        clearDragState()
+        render()
+        return true
+    }
+
     private fun appDropListener(targetId: String): View.OnDragListener {
         return View.OnDragListener { v, event ->
             when (event.action) {
@@ -239,32 +368,53 @@ class SettingsActivity : Activity() {
                     event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
                 DragEvent.ACTION_DRAG_ENTERED -> {
                     v.setBackgroundColor(0x33FFFFFF)
+                    if (draggedAppId != null && targetId != draggedAppId) {
+                        if (event.y < v.height / 2f) placePlaceholderBefore(v)
+                        else placePlaceholderAfter(v)
+                    }
                     true
                 }
-                DragEvent.ACTION_DRAG_EXITED, DragEvent.ACTION_DRAG_ENDED -> {
+                DragEvent.ACTION_DRAG_LOCATION -> {
+                    if (draggedAppId != null && targetId != draggedAppId) {
+                        if (event.y < v.height / 2f) placePlaceholderBefore(v)
+                        else placePlaceholderAfter(v)
+                    }
+                    true
+                }
+                DragEvent.ACTION_DRAG_EXITED -> {
                     v.setBackgroundColor(0x00000000)
                     true
                 }
                 DragEvent.ACTION_DROP -> {
                     v.setBackgroundColor(0x00000000)
-                    val draggedId = try {
-                        event.clipData?.getItemAt(0)?.text?.toString()
-                            ?: event.localState as? String
-                    } catch (_: Exception) {
-                        event.localState as? String
-                    }.orEmpty()
-                    if (draggedId.isBlank() || draggedId == targetId) return@OnDragListener true
-                    val all = store.loadApps()
-                    val dragged = all.firstOrNull { it.id == draggedId } ?: return@OnDragListener true
-                    all.removeAll { it.id == draggedId }
-                    val targetIdx = all.indexOfFirst { it.id == targetId }
-                    if (targetIdx < 0) {
-                        all.add(dragged)
-                    } else {
-                        all.add(targetIdx, dragged)
-                    }
-                    store.saveApps(all)
-                    render()
+                    commitDrop()
+                    true
+                }
+                DragEvent.ACTION_DRAG_ENDED -> {
+                    v.setBackgroundColor(0x00000000)
+                    clearDragState()
+                    true
+                }
+                else -> true
+            }
+        }
+    }
+
+    private fun appListDropListener(): View.OnDragListener {
+        return View.OnDragListener { _, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED ->
+                    event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                DragEvent.ACTION_DRAG_ENTERED, DragEvent.ACTION_DRAG_LOCATION -> {
+                    if (draggedAppId != null) placePlaceholderAtEnd()
+                    true
+                }
+                DragEvent.ACTION_DROP -> {
+                    commitDrop()
+                    true
+                }
+                DragEvent.ACTION_DRAG_ENDED -> {
+                    clearDragState()
                     true
                 }
                 else -> true
@@ -576,6 +726,11 @@ class SettingsActivity : Activity() {
         dialog.show()
     }
 
+    /**
+     * Add/edit app-button dialog (round 27): same fields + Save/Cancel
+     * behavior as before; rows show Edit only, so Delete lives here — a red
+     * text button on the left of the dialog's actions row (edit mode only).
+     */
     private fun appDialog(existing: AppButton?) {
         val label = EditText(this).apply {
             hint = "Label (e.g. Jellyfin)"
@@ -596,16 +751,65 @@ class SettingsActivity : Activity() {
             addView(appId)
             addView(iconUrl)
         }
-        AlertDialog.Builder(this)
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, dp(12), 0, 0)
+        }
+        val dialog = AlertDialog.Builder(this)
             .setTitle(if (existing == null) "Add app button" else "Edit app button")
             .setView(layout)
-            .setPositiveButton("Save") { _, _ ->
+            .create()
+        if (existing == null) {
+            actions.addView(View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        } else {
+            actions.addView(Button(this).apply {
+                text = "Delete"
+                textSize = 14f
+                isAllCaps = false
+                includeFontPadding = false
+                minWidth = 0
+                minimumWidth = 0
+                setBackgroundColor(0x00000000)
+                setTextColor(0xFFFF453A.toInt())
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    gravity = android.view.Gravity.START
+                }
+                setOnClickListener {
+                    store.saveApps(store.loadApps().filter { it.id != existing.id })
+                    render()
+                    dialog.dismiss()
+                }
+            })
+        }
+        actions.addView(Button(this).apply {
+            text = "Cancel"
+            textSize = 14f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setBackgroundColor(0x00000000)
+            setTextColor(0xFFF2F2F2.toInt())
+            setOnClickListener { dialog.dismiss() }
+        })
+        actions.addView(Button(this).apply {
+            text = "Save"
+            textSize = 14f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setBackgroundResource(R.drawable.btn_face_selector)
+            setTextColor(0xFFF2F2F2.toInt())
+            elevation = dp(1).toFloat()
+            setOnClickListener {
                 val l = label.text.toString().trim()
                 val a = appId.text.toString().trim()
                 val icon = iconUrl.text.toString().trim().ifEmpty { null }
                 if (l.isEmpty() || a.isEmpty()) {
                     toast("Label and app ID are both required")
-                    return@setPositiveButton
+                    return@setOnClickListener
                 }
                 val all = store.loadApps()
                 if (existing == null) {
@@ -624,9 +828,11 @@ class SettingsActivity : Activity() {
                 }
                 store.saveApps(all)
                 render()
+                dialog.dismiss()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        })
+        layout.addView(actions)
+        dialog.show()
     }
 
     private fun scan() {

@@ -6,7 +6,7 @@
       was the reference; back/home/play-pause converted from text glyphs),
       doubled D-pad→rocker gap (40dp), everything scaled ~+10% over round 17
       (D-pad 330dp cluster / 275dp cross / 88dp arms / 99dp OK, 72dp round
-      utility buttons, 94x231dp rockers, 97dp app tiles set in code).
+      utility buttons, 94x231dp rockers, 87dp app tiles set in code with 9dp side margins).
       Layout structure and IDs unchanged. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
