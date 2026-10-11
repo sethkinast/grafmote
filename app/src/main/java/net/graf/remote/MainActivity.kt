@@ -46,6 +46,7 @@ class MainActivity : Activity(), TvConnection.Listener {
     private var connState: TvConnection.State = TvConnection.State.IDLE
     private var connDetail: String = ""
     private var spinnerGuard = true
+    private var lastSpinnerPos = -1
 
     private lateinit var tvSpinner: Spinner
     private lateinit var statusDot: View
@@ -99,6 +100,14 @@ class MainActivity : Activity(), TvConnection.Listener {
         tvSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                 if (spinnerGuard) return
+                // Foreground silence: buildSpinner()'s programmatic
+                // setSelection/setAdapter fires onItemSelected asynchronously,
+                // AFTER spinnerGuard is cleared. A re-selection of the already
+                // handled position must be completely silent — no tick, no
+                // switchTo. Genuine user taps land on a new position and tick
+                // as before.
+                if (pos == lastSpinnerPos) return
+                lastSpinnerPos = pos
                 if (pos in tvs.indices) {
                     Haptics.tick(v ?: tvSpinner, tvs[pos].haptic)
                     switchTo(tvs[pos])
@@ -189,6 +198,7 @@ class MainActivity : Activity(), TvConnection.Listener {
             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
         current?.let { c -> tvs.indexOfFirst { it.id == c.id }.takeIf { it >= 0 }?.let { tvSpinner.setSelection(it) } }
+        lastSpinnerPos = tvSpinner.selectedPosition
         spinnerGuard = false
     }
 
@@ -216,7 +226,7 @@ class MainActivity : Activity(), TvConnection.Listener {
      * tiles are exactly the text-only tile.
      */
     private fun appTile(app: AppButton): View {
-        val launch = { v: View, tile: View ->
+        val launch = launch@{ v: View, tile: View ->
             Haptics.tick(v, hapticEnabled())
             val tv = current
             if (tv == null) {
