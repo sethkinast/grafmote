@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Top half of a vertical rocker pill: rounded top, square bottom so it
-     joins the bottom half seamlessly. Same top-right light (angle=45). -->
+<!-- Top half of a vertical rocker: modest 12dp rounded top, square bottom
+     so it joins the bottom half seamlessly. Same top-right light (angle=45). -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient
@@ -8,8 +8,8 @@
         android:startColor="#2E2E33"
         android:endColor="#585862" />
     <corners
-        android:topLeftRadius="26dp"
-        android:topRightRadius="26dp"
+        android:topLeftRadius="12dp"
+        android:topRightRadius="12dp"
         android:bottomLeftRadius="4dp"
         android:bottomRightRadius="4dp" />
     <stroke

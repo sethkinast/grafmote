@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- LG-remote-style layout: header (LED + selector + gear + power), circular
-     D-pad ring with Back/Home in the dead space, three-column bottom row
-     (volume rocker / mute+play-pause / channel rocker), square-ish app tiles.
-     All depth comes from diagonal-gradient shape drawables (light from the
-     top-right, angle=45) plus elevation. No image assets except vectors. -->
+<!-- LG-remote-style layout: header (LED + selector + gear + power), classic
+     CROSS (plus-shaped) D-pad with Back/Home tucked below it, three-column
+     bottom row (volume rocker / mute+play-pause / channel rocker), square-ish
+     app tiles. All depth comes from diagonal-gradient shape drawables (light
+     from the top-right, angle=45) plus subtle 1dp elevation. No image assets
+     except vectors. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -38,7 +39,7 @@
             android:layout_marginStart="4dp"
             android:background="@drawable/btn_circle_selector"
             android:contentDescription="Setup"
-            android:elevation="3dp"
+            android:elevation="1dp"
             android:scaleType="center"
             android:src="@drawable/ic_settings" />
 
@@ -49,14 +50,14 @@
             android:layout_marginStart="8dp"
             android:background="@drawable/btn_circle_selector"
             android:contentDescription="Power"
-            android:elevation="3dp"
+            android:elevation="1dp"
             android:scaleType="center"
             android:src="@drawable/ic_power" />
     </LinearLayout>
 
-    <!-- D-pad: circular ring cluster. Arrows on the axes, OK in the middle,
-         Back (7 o'clock) and Home (4 o'clock) small round buttons tucked into
-         the ring's dead space with non-overlapping touch targets. -->
+    <!-- D-pad: classic CROSS (plus) cluster. Four rounded-square arrow
+         buttons on the axes around the round OK button, Back (7 o'clock) and
+         Home (4 o'clock) as small round buttons tucked below the cross. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -67,18 +68,31 @@
 
         <RelativeLayout
             android:layout_width="280dp"
-            android:layout_height="280dp"
-            android:background="@drawable/dpad_ring">
+            android:layout_height="280dp">
+
+            <Button
+                android:id="@+id/btnOk"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:layout_centerInParent="true"
+                android:background="@drawable/btn_circle_selector"
+                android:elevation="1dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="OK"
+                android:textSize="18sp" />
 
             <Button
                 android:id="@+id/btnUp"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
-                android:layout_alignParentTop="true"
+                android:layout_width="68dp"
+                android:layout_height="68dp"
+                android:layout_above="@id/btnOk"
                 android:layout_centerHorizontal="true"
-                android:layout_marginTop="6dp"
-                android:background="@drawable/btn_circle_selector"
-                android:elevation="3dp"
+                android:layout_marginBottom="6dp"
+                android:background="@drawable/btn_dpad_selector"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
@@ -88,13 +102,13 @@
 
             <Button
                 android:id="@+id/btnDown"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
-                android:layout_alignParentBottom="true"
+                android:layout_width="68dp"
+                android:layout_height="68dp"
+                android:layout_below="@id/btnOk"
                 android:layout_centerHorizontal="true"
-                android:layout_marginBottom="6dp"
-                android:background="@drawable/btn_circle_selector"
-                android:elevation="3dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/btn_dpad_selector"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
@@ -104,13 +118,13 @@
 
             <Button
                 android:id="@+id/btnLeft"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
-                android:layout_alignParentStart="true"
+                android:layout_width="68dp"
+                android:layout_height="68dp"
+                android:layout_toStartOf="@id/btnOk"
                 android:layout_centerVertical="true"
-                android:layout_marginStart="6dp"
-                android:background="@drawable/btn_circle_selector"
-                android:elevation="3dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/btn_dpad_selector"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
@@ -120,33 +134,19 @@
 
             <Button
                 android:id="@+id/btnRight"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
-                android:layout_alignParentEnd="true"
+                android:layout_width="68dp"
+                android:layout_height="68dp"
+                android:layout_toEndOf="@id/btnOk"
                 android:layout_centerVertical="true"
-                android:layout_marginEnd="6dp"
-                android:background="@drawable/btn_circle_selector"
-                android:elevation="3dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/btn_dpad_selector"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:text="▶"
                 android:textSize="24sp" />
-
-            <Button
-                android:id="@+id/btnOk"
-                android:layout_width="76dp"
-                android:layout_height="76dp"
-                android:layout_centerInParent="true"
-                android:background="@drawable/btn_circle_selector"
-                android:elevation="3dp"
-                android:gravity="center"
-                android:includeFontPadding="false"
-                android:minWidth="0dp"
-                android:minHeight="0dp"
-                android:text="OK"
-                android:textSize="18sp" />
 
             <Button
                 android:id="@+id/btnBack"
@@ -158,7 +158,7 @@
                 android:layout_marginBottom="30dp"
                 android:background="@drawable/btn_circle_selector"
                 android:contentDescription="Back"
-                android:elevation="3dp"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
@@ -176,7 +176,7 @@
                 android:layout_marginBottom="30dp"
                 android:background="@drawable/btn_circle_selector"
                 android:contentDescription="Home"
-                android:elevation="3dp"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
@@ -194,7 +194,7 @@
         android:layout_marginTop="8dp"
         android:orientation="horizontal">
 
-        <!-- LEFT: single connected vertical volume rocker pill -->
+        <!-- LEFT: single connected vertical volume rocker (rounded rectangle) -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -207,7 +207,7 @@
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:background="@drawable/btn_rocker_top_selector"
-                android:elevation="3dp"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
@@ -228,7 +228,7 @@
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:background="@drawable/btn_rocker_bottom_selector"
-                android:elevation="3dp"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
@@ -251,7 +251,7 @@
                 android:layout_height="60dp"
                 android:background="@drawable/btn_circle_selector"
                 android:contentDescription="Mute"
-                android:elevation="3dp"
+                android:elevation="1dp"
                 android:scaleType="center"
                 android:src="@drawable/ic_mute" />
 
@@ -262,7 +262,7 @@
                 android:layout_marginTop="12dp"
                 android:background="@drawable/btn_circle_selector"
                 android:contentDescription="Play/Pause"
-                android:elevation="3dp"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
@@ -271,7 +271,7 @@
                 android:textSize="22sp" />
         </LinearLayout>
 
-        <!-- RIGHT: single connected vertical channel rocker pill -->
+        <!-- RIGHT: single connected vertical channel rocker (rounded rectangle) -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -284,7 +284,7 @@
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:background="@drawable/btn_rocker_top_selector"
-                android:elevation="3dp"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
@@ -305,7 +305,7 @@
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:background="@drawable/btn_rocker_bottom_selector"
-                android:elevation="3dp"
+                android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"

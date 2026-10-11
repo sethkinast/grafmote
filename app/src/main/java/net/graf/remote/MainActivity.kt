@@ -172,7 +172,7 @@ class MainActivity : Activity(), TvConnection.Listener {
                 maxLines = 2
                 gravity = Gravity.CENTER
                 setBackgroundResource(R.drawable.btn_face_selector)
-                elevation = dp(3).toFloat()
+                elevation = dp(1).toFloat()
                 setOnClickListener {
                     val tv = current
                     if (tv == null) {
