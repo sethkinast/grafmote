@@ -1,19 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Round 15 polish: unified top bar (raised selector pill on the left +
+<!-- Round 16 polish: unified top bar (raised selector pill on the left +
      recessed inset icon panel on the right), ONE seamless plus-shaped
      D-pad (strokeless layer-list cross face + transparent arrow
      touch zones, OK seated in the center with its circular border, Back at
-     7 o'clock / Home at 4 o'clock) at pre-round-13 proportions, compact
-     rocker row (single-pill VOL / CH backgrounds with transparent +/-
-     touch halves), small round utility buttons all at ONE diameter (52dp),
-     square app tiles at ONE size (88dp, set in code), inset rule instead of
-     an "Apps" header. Leftover vertical space sits between the rocker row
-     and the app tiles (spacer view), never above the D-pad. App tiles
-     center when they fit, scroll from the left on overflow (fillViewport +
-     match_parent/gravity). All depth comes from diagonal-gradient shape
-     drawables (light from the top-right, angle=45; the icon well runs the
-     reverse angle for an inset feel) plus subtle 1dp elevation on raised
-     faces only. No image assets except vectors. -->
+     7 o'clock / Home at 4 o'clock) scaled ~+25% over rounds 14-15,
+     roomier rocker row (single-pill VOL / CH backgrounds with transparent
+     +/- touch halves, ~+25%), round utility buttons all at ONE larger
+     diameter (65dp), clear vertical gap between the D-pad section and the
+     rocker row, square app tiles at ONE size (88dp, set in code), inset
+     rule instead of an "Apps" header. Leftover vertical space sits between
+     the rocker row and the app tiles (spacer view, shrinks to compensate),
+     never above the D-pad. App tiles center when they fit, scroll from the
+     left on overflow (fillViewport + match_parent/gravity). All depth comes
+     from diagonal-gradient shape drawables (light from the top-right,
+     angle=45; the icon well runs the reverse angle for an inset feel) plus
+     subtle 1dp elevation on raised faces only. No image assets except
+     vectors. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -101,7 +103,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- D-pad: ONE seamless plus at pre-round-13 proportions. The cross face
+    <!-- D-pad: ONE seamless plus, ~+25% over rounds 14-15. The cross face
          is a single strokeless layer-list background (no internal divider
          lines); the four arrows are transparent touch zones over its arms
          (zero gap, zero seam) and the round OK button sits in the center
@@ -118,20 +120,20 @@
         android:orientation="vertical">
 
         <RelativeLayout
-            android:layout_width="240dp"
-            android:layout_height="240dp">
+            android:layout_width="300dp"
+            android:layout_height="300dp">
 
             <View
-                android:layout_width="200dp"
-                android:layout_height="200dp"
+                android:layout_width="250dp"
+                android:layout_height="250dp"
                 android:layout_centerInParent="true"
                 android:background="@drawable/btn_dpad_cross"
                 android:elevation="1dp" />
 
             <Button
                 android:id="@+id/btnUp"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
                 android:layout_above="@id/btnOk"
                 android:layout_centerHorizontal="true"
                 android:background="@drawable/btn_touch_ripple"
@@ -140,12 +142,12 @@
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:text="▲"
-                android:textSize="22sp" />
+                android:textSize="28sp" />
 
             <Button
                 android:id="@+id/btnDown"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
                 android:layout_below="@id/btnOk"
                 android:layout_centerHorizontal="true"
                 android:background="@drawable/btn_touch_ripple"
@@ -154,12 +156,12 @@
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:text="▼"
-                android:textSize="22sp" />
+                android:textSize="28sp" />
 
             <Button
                 android:id="@+id/btnLeft"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
                 android:layout_toStartOf="@id/btnOk"
                 android:layout_centerVertical="true"
                 android:background="@drawable/btn_touch_ripple"
@@ -168,12 +170,12 @@
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:text="◀"
-                android:textSize="22sp" />
+                android:textSize="28sp" />
 
             <Button
                 android:id="@+id/btnRight"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
                 android:layout_toEndOf="@id/btnOk"
                 android:layout_centerVertical="true"
                 android:background="@drawable/btn_touch_ripple"
@@ -182,12 +184,12 @@
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:text="▶"
-                android:textSize="22sp" />
+                android:textSize="28sp" />
 
             <Button
                 android:id="@+id/btnOk"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
+                android:layout_width="90dp"
+                android:layout_height="90dp"
                 android:layout_centerInParent="true"
                 android:background="@drawable/btn_circle_selector"
                 android:elevation="1dp"
@@ -196,12 +198,12 @@
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:text="OK"
-                android:textSize="18sp" />
+                android:textSize="22sp" />
 
             <Button
                 android:id="@+id/btnBack"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
+                android:layout_width="65dp"
+                android:layout_height="65dp"
                 android:layout_alignParentStart="true"
                 android:layout_alignParentBottom="true"
                 android:layout_marginStart="8dp"
@@ -214,12 +216,12 @@
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:text="↩"
-                android:textSize="20sp" />
+                android:textSize="25sp" />
 
             <Button
                 android:id="@+id/btnHome"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
+                android:layout_width="65dp"
+                android:layout_height="65dp"
                 android:layout_alignParentEnd="true"
                 android:layout_alignParentBottom="true"
                 android:layout_marginEnd="8dp"
@@ -232,25 +234,27 @@
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:text="⌂"
-                android:textSize="20sp" />
+                android:textSize="25sp" />
         </RelativeLayout>
     </LinearLayout>
 
     <!-- Bottom row: narrow volume pill | mute + play/pause | narrow channel
-         pill. Each rocker is ONE pill background (68dp wide, as narrow as a
+         pill. Each rocker is ONE pill background (85dp wide, as narrow as a
          D-pad arm) with two transparent touch halves — no seam, no divider
-         line between the halves. -->
+         line between the halves. Clear 20dp gap above this row separates it
+         from the D-pad cluster; the weight-1 spacer below shrinks to
+         compensate so the remote section still fits without scrolling. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="20dp"
         android:gravity="center_horizontal"
         android:orientation="horizontal">
 
         <!-- LEFT: single connected volume pill -->
         <FrameLayout
-            android:layout_width="68dp"
-            android:layout_height="168dp"
+            android:layout_width="85dp"
+            android:layout_height="210dp"
             android:background="@drawable/btn_rocker_pill"
             android:elevation="1dp">
 
@@ -270,7 +274,7 @@
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:text="+"
-                    android:textSize="24sp" />
+                    android:textSize="30sp" />
 
                 <Button
                     android:id="@+id/btnVolDown"
@@ -283,15 +287,15 @@
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:text="−"
-                    android:textSize="24sp" />
+                    android:textSize="30sp" />
             </LinearLayout>
         </FrameLayout>
 
-        <!-- MIDDLE: mute + play/pause, same 52dp diameter as every other
+        <!-- MIDDLE: mute + play/pause, same 65dp diameter as every other
              small round utility button -->
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="168dp"
+            android:layout_height="210dp"
             android:layout_marginStart="28dp"
             android:layout_marginEnd="28dp"
             android:gravity="center"
@@ -299,8 +303,8 @@
 
             <ImageButton
                 android:id="@+id/btnMute"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
+                android:layout_width="65dp"
+                android:layout_height="65dp"
                 android:background="@drawable/btn_circle_selector"
                 android:contentDescription="Mute"
                 android:elevation="1dp"
@@ -309,9 +313,9 @@
 
             <Button
                 android:id="@+id/btnPlayPause"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:layout_marginTop="12dp"
+                android:layout_width="65dp"
+                android:layout_height="65dp"
+                android:layout_marginTop="15dp"
                 android:background="@drawable/btn_circle_selector"
                 android:contentDescription="Play/Pause"
                 android:elevation="1dp"
@@ -320,13 +324,13 @@
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:text="⏯"
-                android:textSize="20sp" />
+                android:textSize="25sp" />
         </LinearLayout>
 
         <!-- RIGHT: single connected channel pill -->
         <FrameLayout
-            android:layout_width="68dp"
-            android:layout_height="168dp"
+            android:layout_width="85dp"
+            android:layout_height="210dp"
             android:background="@drawable/btn_rocker_pill"
             android:elevation="1dp">
 
@@ -346,7 +350,7 @@
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:text="▲"
-                    android:textSize="22sp" />
+                    android:textSize="28sp" />
 
                 <Button
                     android:id="@+id/btnChDown"
@@ -359,7 +363,7 @@
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:text="▼"
-                    android:textSize="22sp" />
+                    android:textSize="28sp" />
             </LinearLayout>
         </FrameLayout>
     </LinearLayout>

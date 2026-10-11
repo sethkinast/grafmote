@@ -3,33 +3,33 @@
      bar crossed by a horizontal bar, same gradient and top-right light
      (angle=45) on both, NO strokes — the bar outlines used to draw visible
      internal divider lines where the bars overlap, so they are gone. The
-     round OK button (72dp, with its own circular border) fully covers the
-     64dp bar intersection, and the bars melt into a single cross. Arrow
+     round OK button (90dp, with its own circular border) fully covers the
+     80dp bar intersection, and the bars melt into a single cross. Arrow
      glyphs sit on transparent touch zones layered above; the bars are the
      only visible face. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item
-        android:width="64dp"
-        android:height="200dp"
+        android:width="80dp"
+        android:height="250dp"
         android:gravity="center">
         <shape android:shape="rectangle">
             <gradient
                 android:angle="45"
                 android:startColor="#2E2E33"
                 android:endColor="#585862" />
-            <corners android:radius="18dp" />
+            <corners android:radius="22dp" />
         </shape>
     </item>
     <item
-        android:width="200dp"
-        android:height="64dp"
+        android:width="250dp"
+        android:height="80dp"
         android:gravity="center">
         <shape android:shape="rectangle">
             <gradient
                 android:angle="45"
                 android:startColor="#2E2E33"
                 android:endColor="#585862" />
-            <corners android:radius="18dp" />
+            <corners android:radius="22dp" />
         </shape>
     </item>
 </layer-list>
