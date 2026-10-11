@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rounded-square button face (app buttons, square-ish). Same top-right
+     light source as the round buttons (gradient angle=45). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="45"
+        android:startColor="#2E2E33"
+        android:endColor="#585862" />
+    <corners android:radius="14dp" />
+    <stroke
+        android:width="1dp"
+        android:color="#1A1A1C" />
+</shape>

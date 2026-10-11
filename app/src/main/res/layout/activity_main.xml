@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Flex layout: the root fills the screen and control groups share the
-     available height by weight, so there is no dead region on tall phones. -->
+<!-- LG-remote-style layout: header (LED + selector + gear + power), circular
+     D-pad ring with Back/Home in the dead space, three-column bottom row
+     (volume rocker / mute+play-pause / channel rocker), square-ish app tiles.
+     All depth comes from diagonal-gradient shape drawables (light from the
+     top-right, angle=45) plus elevation. No image assets except vectors. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="12dp">
 
-    <!-- Header: status LED dot + TV selector + setup + power (top-right) -->
+    <!-- Header: status LED dot + TV selector + gear + power -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -28,216 +31,288 @@
             android:layout_height="wrap_content"
             android:layout_weight="1" />
 
-        <Button
+        <ImageButton
             android:id="@+id/btnSettings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="56dp"
-            android:text="Setup" />
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/btn_circle_selector"
+            android:contentDescription="Setup"
+            android:elevation="3dp"
+            android:scaleType="center"
+            android:src="@drawable/ic_settings" />
 
         <ImageButton
             android:id="@+id/btnPower"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/btn_circle_selector"
             android:contentDescription="Power"
+            android:elevation="3dp"
+            android:scaleType="center"
             android:src="@drawable/ic_power" />
     </LinearLayout>
 
-    <!-- Transient status only (connecting / reconnecting / approval prompts).
-         Gone the rest of the time; persistent state lives in the LED dot. -->
-    <TextView
-        android:id="@+id/statusText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
-        android:textSize="14sp"
-        android:visibility="gone" />
-
-    <!-- D-pad: uniform 3x3 grid. Every cell (buttons and spacers) has the same
-         column/row weight and fill gravity, so all five buttons share uniform
-         sizing and OK stays aligned with left/right. -->
-    <GridLayout
+    <!-- D-pad: circular ring cluster. Arrows on the axes, OK in the middle,
+         Back (7 o'clock) and Home (4 o'clock) small round buttons tucked into
+         the ring's dead space with non-overlapping touch targets. -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="4"
         android:layout_marginTop="4dp"
-        android:columnCount="3"
-        android:rowCount="3">
+        android:gravity="center"
+        android:orientation="vertical">
 
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1" />
+        <RelativeLayout
+            android:layout_width="280dp"
+            android:layout_height="280dp"
+            android:background="@drawable/dpad_ring">
 
-        <Button
-            android:id="@+id/btnUp"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="▲"
-            android:textSize="24sp" />
+            <Button
+                android:id="@+id/btnUp"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_alignParentTop="true"
+                android:layout_centerHorizontal="true"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/btn_circle_selector"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="▲"
+                android:textSize="24sp" />
 
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1" />
+            <Button
+                android:id="@+id/btnDown"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_alignParentBottom="true"
+                android:layout_centerHorizontal="true"
+                android:layout_marginBottom="6dp"
+                android:background="@drawable/btn_circle_selector"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="▼"
+                android:textSize="24sp" />
 
-        <Button
-            android:id="@+id/btnLeft"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="◀"
-            android:textSize="24sp" />
+            <Button
+                android:id="@+id/btnLeft"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/btn_circle_selector"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="◀"
+                android:textSize="24sp" />
 
-        <Button
-            android:id="@+id/btnOk"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="OK"
-            android:textSize="20sp" />
+            <Button
+                android:id="@+id/btnRight"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/btn_circle_selector"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="▶"
+                android:textSize="24sp" />
 
-        <Button
-            android:id="@+id/btnRight"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="▶"
-            android:textSize="24sp" />
+            <Button
+                android:id="@+id/btnOk"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:layout_centerInParent="true"
+                android:background="@drawable/btn_circle_selector"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="OK"
+                android:textSize="18sp" />
 
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1" />
+            <Button
+                android:id="@+id/btnBack"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_alignParentStart="true"
+                android:layout_alignParentBottom="true"
+                android:layout_marginStart="30dp"
+                android:layout_marginBottom="30dp"
+                android:background="@drawable/btn_circle_selector"
+                android:contentDescription="Back"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="↩"
+                android:textSize="22sp" />
 
-        <Button
-            android:id="@+id/btnDown"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="▼"
-            android:textSize="24sp" />
+            <Button
+                android:id="@+id/btnHome"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentBottom="true"
+                android:layout_marginEnd="30dp"
+                android:layout_marginBottom="30dp"
+                android:background="@drawable/btn_circle_selector"
+                android:contentDescription="Home"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="⌂"
+                android:textSize="22sp" />
+        </RelativeLayout>
+    </LinearLayout>
 
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1" />
-    </GridLayout>
-
-    <!-- Back / Home -->
-    <GridLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp"
-        android:columnCount="2"
-        android:rowCount="1">
-
-        <Button
-            android:id="@+id/btnBack"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1"
-            android:gravity="center"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="Back" />
-
-        <Button
-            android:id="@+id/btnHome"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_columnWeight="1"
-            android:layout_gravity="fill"
-            android:layout_rowWeight="1"
-            android:gravity="center"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:text="Home" />
-    </GridLayout>
-
-    <!-- Volume cluster like a physical remote: VOL+ top, MUTE middle, VOL- bottom -->
+    <!-- Bottom row: volume rocker | mute + play/pause | channel rocker -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="3"
         android:layout_marginTop="8dp"
-        android:orientation="vertical">
+        android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/btnVolUp"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
+        <!-- LEFT: single connected vertical volume rocker pill -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
             android:layout_weight="1"
+            android:orientation="vertical">
+
+            <Button
+                android:id="@+id/btnVolUp"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_rocker_top_selector"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="+"
+                android:textSize="26sp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:background="#1A1A1C" />
+
+            <Button
+                android:id="@+id/btnVolDown"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_rocker_bottom_selector"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="−"
+                android:textSize="26sp" />
+        </LinearLayout>
+
+        <!-- MIDDLE: two smaller round buttons -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0.7"
             android:gravity="center"
-            android:minHeight="0dp"
-            android:text="VOL +"
-            android:textSize="20sp" />
+            android:orientation="vertical">
 
-        <ImageButton
-            android:id="@+id/btnMute"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginTop="6dp"
-            android:layout_marginBottom="6dp"
-            android:background="?android:attr/selectableItemBackground"
-            android:contentDescription="Mute"
-            android:scaleType="center"
-            android:src="@drawable/ic_mute" />
+            <ImageButton
+                android:id="@+id/btnMute"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:background="@drawable/btn_circle_selector"
+                android:contentDescription="Mute"
+                android:elevation="3dp"
+                android:scaleType="center"
+                android:src="@drawable/ic_mute" />
 
-        <Button
-            android:id="@+id/btnVolDown"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
+            <Button
+                android:id="@+id/btnPlayPause"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/btn_circle_selector"
+                android:contentDescription="Play/Pause"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="⏯"
+                android:textSize="22sp" />
+        </LinearLayout>
+
+        <!-- RIGHT: single connected vertical channel rocker pill -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
             android:layout_weight="1"
-            android:gravity="center"
-            android:minHeight="0dp"
-            android:text="VOL −"
-            android:textSize="20sp" />
+            android:orientation="vertical">
+
+            <Button
+                android:id="@+id/btnChUp"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_rocker_top_selector"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="▲"
+                android:textSize="24sp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:background="#1A1A1C" />
+
+            <Button
+                android:id="@+id/btnChDown"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_rocker_bottom_selector"
+                android:elevation="3dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:text="▼"
+                android:textSize="24sp" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- Apps -->
