@@ -8,8 +8,12 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.UUID
 import kotlin.concurrent.thread
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** Manage TVs (nickname + IP/hostname, SSDP scan) and app-launch buttons. */
 class SettingsActivity : Activity() {
@@ -27,7 +31,7 @@ class SettingsActivity : Activity() {
 
         findViewById<Button>(R.id.btnAddTv).setOnClickListener { tvDialog(null) }
         findViewById<Button>(R.id.btnScan).setOnClickListener { scan() }
-        findViewById<Button>(R.id.btnAddApp).setOnClickListener { appDialog(null) }
+        findViewById<Button>(R.id.btnAddApp).setOnClickListener { addAppFlow() }
         findViewById<Button>(R.id.btnDone).setOnClickListener { finish() }
     }
 
@@ -132,6 +136,171 @@ class SettingsActivity : Activity() {
             .setNegativeButton("Cancel", null)
             .show()
     }
+
+    /**
+     * "Add app" flow: query the currently selected TV's installed-app list
+     * (GET http://<tv>:8001/api/v2/applications/list), show real names in a
+     * multi-select dialog, and add the chosen ones with their IDs. Manual
+     * entry stays available as a fallback in the same dialog.
+     */
+    private fun addAppFlow() {
+        val tvs = store.loadTvs()
+        if (tvs.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("Add apps")
+                .setMessage("Add a TV first, then pick apps from it.")
+                .setPositiveButton("OK", null)
+                .setNeutralButton("Enter manually") { _, _ -> appDialog(null) }
+                .show()
+            return
+        }
+        val target = store.lastTvId()?.let { id -> tvs.firstOrNull { it.id == id } }
+            ?: tvs.first()
+
+        val loading = AlertDialog.Builder(this)
+            .setTitle("Add apps")
+            .setMessage("Loading apps from ${target.nick}…")
+            .setCancelable(false)
+            .create()
+        loading.show()
+
+        thread {
+            val found = fetchInstalledApps(target.host)
+            runOnUiThread {
+                try {
+                    loading.dismiss()
+                } catch (_: Exception) {
+                }
+                if (found == null) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Add apps")
+                        .setMessage(
+                            "Couldn't reach ${target.nick} — " +
+                                "the TV must be on and connected to the same Wi-Fi."
+                        )
+                        .setPositiveButton("Retry") { _, _ -> addAppFlow() }
+                        .setNeutralButton("Enter manually") { _, _ -> appDialog(null) }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                    return@runOnUiThread
+                }
+                if (found.isEmpty()) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Add apps")
+                        .setMessage("No apps reported by ${target.nick}.")
+                        .setPositiveButton("Retry") { _, _ -> addAppFlow() }
+                        .setNeutralButton("Enter manually") { _, _ -> appDialog(null) }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                    return@runOnUiThread
+                }
+                val names = found.map { it.first }.toTypedArray()
+                val checked = BooleanArray(found.size)
+                AlertDialog.Builder(this)
+                    .setTitle("Add apps from ${target.nick}")
+                    .setMultiChoiceItems(names, checked) { _, which, isChecked ->
+                        checked[which] = isChecked
+                    }
+                    .setPositiveButton("Add selected") { _, _ ->
+                        val all = store.loadApps()
+                        val have = all.map { it.appId }.toSet()
+                        var added = 0
+                        found.forEachIndexed { i, (name, appId) ->
+                            if (checked[i] && !have.contains(appId) &&
+                                all.none { it.appId == appId }
+                            ) {
+                                all.add(AppButton(UUID.randomUUID().toString(), name, appId))
+                                added++
+                            }
+                        }
+                        store.saveApps(all)
+                        render()
+                        toast(if (added > 0) "Added $added app(s)" else "Nothing new selected")
+                    }
+                    .setNeutralButton("Enter manually") { _, _ -> appDialog(null) }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+    }
+
+    /**
+     * GET the TV's installed-app list. Returns null when the TV is
+     * unreachable (must be on + connected); otherwise the parsed
+     * (name, appId) pairs, possibly empty.
+     */
+    private fun fetchInstalledApps(host: String): List<Pair<String, String>>? {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = URL("http://$host:8001/api/v2/applications/list").openConnection() as HttpURLConnection
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            if (conn.responseCode != 200) return null
+            val body = conn.inputStream.bufferedReader().use { it.readText() }.trim()
+            parseAppList(body).sortedBy { it.first.lowercase() }
+        } catch (_: Exception) {
+            null
+        } finally {
+            try {
+                conn?.disconnect()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * The endpoint returns a JSON array of app objects, but key names vary by
+     * firmware — accept the common variants for both the envelope and the
+     * per-app name/id fields.
+     */
+    private fun parseAppList(body: String): List<Pair<String, String>> {
+        val arr: JSONArray = try {
+            JSONArray(body)
+        } catch (_: Exception) {
+            try {
+                val root = JSONObject(body)
+                arrayFrom(root, "data")
+                    ?: arrayFrom(root, "applications")
+                    ?: arrayFrom(root, "apps")
+                    ?: arrayFrom(root, "list")
+                    ?: arrayFrom(root, "result")
+                    ?: arrayFrom(root, "items")
+                    ?: return emptyList()
+            } catch (_: Exception) {
+                return emptyList()
+            }
+        }
+        val out = mutableListOf<Pair<String, String>>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val name = firstNonEmpty(
+                o.optString("name"), o.optString("appName"),
+                o.optString("title"), o.optString("label")
+            )
+            val appId = firstNonEmpty(
+                o.optString("appId"), o.optString("id"),
+                o.optString("app_id"), o.optString("applicationId")
+            )
+            if (name.isNotEmpty() && appId.isNotEmpty()) out.add(name to appId)
+        }
+        return out
+    }
+
+    private fun arrayFrom(root: JSONObject, key: String): JSONArray? {
+        val v = root.opt(key) ?: return null
+        return when (v) {
+            is JSONArray -> v
+            is JSONObject -> {
+                // Some firmware nests once more, e.g. {"data":{"apps":[...]}}.
+                arrayFrom(v, "apps") ?: arrayFrom(v, "applications")
+                    ?: arrayFrom(v, "list") ?: arrayFrom(v, "items")
+            }
+            else -> null
+        }
+    }
+
+    private fun firstNonEmpty(vararg vals: String): String =
+        vals.firstOrNull { it.isNotBlank() }?.trim() ?: ""
 
     private fun appDialog(existing: AppButton?) {
         val label = EditText(this).apply {
