@@ -173,7 +173,8 @@ object Ssdp {
                 null
             } ?: return null
             if (!isSamsung(dev)) return null
-            val name = dev.optString("name", "").trim().ifEmpty { ip }
+            val rawName = dev.optString("name", "").trim()
+            val name = if (rawName.isEmpty()) ip else stripTvPrefix(rawName)
             Found(ip, name)
         } catch (_: Exception) {
             null
@@ -186,6 +187,18 @@ object Ssdp {
     }
 
     private fun isSamsung(dev: JSONObject): Boolean = SAMSUNG_KEYS.any { dev.has(it) }
+
+    /**
+     * Samsung TVs broadcast a default friendly-name like "[TV] Samsung 7 Series".
+     * The "[TV]" is Samsung's convention, not the user's chosen name, so strip
+     * a single leading "[TV] " from LAN-discovered names before display/storage.
+     * Manual entries never pass through here and are left untouched.
+     */
+    private fun stripTvPrefix(raw: String): String {
+        if (!raw.startsWith("[TV] ")) return raw
+        val stripped = raw.removePrefix("[TV] ")
+        return if (stripped.isEmpty()) raw else stripped
+    }
 
     // ---- SSDP first pass (cheap, best-effort) ----
 
@@ -293,8 +306,9 @@ object Ssdp {
             conn.readTimeout = 1500
             if (conn.responseCode != 200) return null
             val xml = conn.inputStream.bufferedReader().use { it.readText() }
-            Regex("<friendlyName>(.*?)</friendlyName>", RegexOption.DOT_MATCHES_ALL)
-                .find(xml)?.groupValues?.get(1)?.trim()?.ifEmpty { null }
+            val raw = Regex("<friendlyName>(.*?)</friendlyName>", RegexOption.DOT_MATCHES_ALL)
+                .find(xml)?.groupValues?.get(1)?.trim()?.ifEmpty { null } ?: return null
+            stripTvPrefix(raw)
         } catch (e: Exception) {
             Log.d(TAG, "describe failed for $location: ${e.message}")
             null
