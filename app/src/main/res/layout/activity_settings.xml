@@ -5,128 +5,139 @@
      gray rectangles, section headers + rows sharing one alignment gutter,
      inset rules echoing the remote's divider. IDs, view types, and structure
      are unchanged (tvList/appList LinearLayouts; btnAddTv/btnScan/btnAddApp/
-     btnDone Buttons) so all wiring is untouched. Visual pass only. -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+     btnDone Buttons) so all wiring is untouched. Visual pass only.
+     Round 28: Done is a fixed footer below the ScrollView (weight-1 scroll
+     + footer), so it stays pinned to the bottom instead of scrolling. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical">
 
-    <LinearLayout
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="12dp">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginBottom="8dp"
-            android:text="TVs"
-            android:textColor="#f2f2f2"
-            android:textSize="18sp" />
-
-        <LinearLayout
-            android:id="@+id/tvList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="16dp"
-            android:orientation="horizontal">
+            android:orientation="vertical"
+            android:padding="12dp">
 
-            <Button
-                android:id="@+id/btnAddTv"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="4dp"
-                android:layout_weight="1"
-                android:background="@drawable/btn_face_selector"
-                android:elevation="1dp"
-                android:gravity="center"
-                android:includeFontPadding="false"
-                android:minWidth="0dp"
-                android:minHeight="48dp"
-                android:text="Add TV"
-                android:textColor="#f2f2f2" />
-
-            <Button
-                android:id="@+id/btnScan"
-                android:layout_width="0dp"
+            <TextView
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
-                android:layout_weight="1"
+                android:layout_marginBottom="8dp"
+                android:text="TVs"
+                android:textColor="#f2f2f2"
+                android:textSize="18sp" />
+
+            <LinearLayout
+                android:id="@+id/tvList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnAddTv"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_face_selector"
+                    android:elevation="1dp"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:minWidth="0dp"
+                    android:minHeight="48dp"
+                    android:text="Add TV"
+                    android:textColor="#f2f2f2" />
+
+                <Button
+                    android:id="@+id/btnScan"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_face_selector"
+                    android:elevation="1dp"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:minWidth="0dp"
+                    android:minHeight="48dp"
+                    android:text="Scan LAN"
+                    android:textColor="#f2f2f2" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:layout_marginBottom="16dp"
+                android:background="#2E2E33" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginBottom="8dp"
+                android:text="App buttons"
+                android:textColor="#f2f2f2"
+                android:textSize="18sp" />
+
+            <LinearLayout
+                android:id="@+id/appList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <Button
+                android:id="@+id/btnAddApp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp"
                 android:background="@drawable/btn_face_selector"
                 android:elevation="1dp"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:minWidth="0dp"
                 android:minHeight="48dp"
-                android:text="Scan LAN"
+                android:text="Add app button"
                 android:textColor="#f2f2f2" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:layout_marginBottom="16dp"
+                android:background="#2E2E33" />
         </LinearLayout>
+    </ScrollView>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginStart="4dp"
-            android:layout_marginEnd="4dp"
-            android:layout_marginBottom="16dp"
-            android:background="#2E2E33" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginBottom="8dp"
-            android:text="App buttons"
-            android:textColor="#f2f2f2"
-            android:textSize="18sp" />
-
-        <LinearLayout
-            android:id="@+id/appList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <Button
-            android:id="@+id/btnAddApp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/btn_face_selector"
-            android:elevation="1dp"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:minWidth="0dp"
-            android:minHeight="48dp"
-            android:text="Add app button"
-            android:textColor="#f2f2f2" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="16dp"
-            android:layout_marginEnd="4dp"
-            android:layout_marginBottom="16dp"
-            android:background="#2E2E33" />
-
-        <Button
-            android:id="@+id/btnDone"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/btn_face_selector"
-            android:elevation="1dp"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:minWidth="0dp"
-            android:minHeight="48dp"
-            android:text="Done"
-            android:textColor="#f2f2f2" />
-    </LinearLayout>
-</ScrollView>
+    <Button
+        android:id="@+id/btnDone"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/btn_face_selector"
+        android:elevation="1dp"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:minWidth="0dp"
+        android:minHeight="48dp"
+        android:text="Done"
+        android:textColor="#f2f2f2" />
+</LinearLayout>
