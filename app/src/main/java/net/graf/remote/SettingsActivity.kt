@@ -19,6 +19,7 @@ import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
@@ -192,6 +193,11 @@ class SettingsActivity : Activity() {
      * hover path on the container snaps the placeholder above/below the
      * hovered row by pointer half — symmetric in both directions, first
      * position reachable. TV rows stay non-draggable.
+     *
+     * Round 40: a small app logo leads every row — the stored iconUrl via
+     * IconLoader (round-30 catalog enrich already backfilled it), with the
+     * letter tile underneath as the fallback when no logo matches (or while
+     * offline, since the ImageView starts GONE).
      */
     private fun appRow(app: AppButton): LinearLayout {
         val sub = if (app.launchIds().size > 1) {
@@ -221,6 +227,7 @@ class SettingsActivity : Activity() {
                 })
             }
             val edit = editGlyph { appDialog(app) }
+            addView(appRowLogo(app))
             addView(texts)
             addView(edit)
             setPadding(dp(4), dp(6), dp(4), dp(6))
@@ -266,9 +273,52 @@ class SettingsActivity : Activity() {
     }
 
     /**
+     * Round 40: small leading logo for an app row — a 40dp square with the
+     * letter tile underneath and the catalog logo on top via IconLoader.
+     * When the button has no iconUrl (no catalog match) the ImageView stays
+     * GONE and the letter shows; when it does, the logo covers the letter
+     * once loaded (offline it stays GONE, so the letter is the fallback).
+     */
+    private fun appRowLogo(app: AppButton): FrameLayout {
+        val size = dp(40)
+        val holder = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                marginEnd = dp(8)
+                gravity = Gravity.CENTER_VERTICAL
+            }
+        }
+        val letter = (app.label.trim().firstOrNull()?.uppercase() ?: "?")
+        holder.addView(TextView(this).apply {
+            text = letter
+            gravity = Gravity.CENTER
+            textSize = 18f
+            setTextColor(0xFFF2F2F2.toInt())
+            includeFontPadding = false
+            setBackgroundResource(R.drawable.btn_face_selector)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        })
+        val logo = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = app.label
+            setPadding(0, 0, 0, 0)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        holder.addView(logo)
+        IconLoader.loadInto(logo, app.iconUrl?.trim().orEmpty())
+        return holder
+    }
+
+    /**
      * Drag shadow (round 30): a detached clone showing the label ONLY (no
      * handle, no Edit/Delete buttons) over a solid opaque background, drawn
      * at the touch point passed in from the row.
+     * Round 40: leads with the same logo/letter tile as the row.
      */
     private fun buildAppRowShadow(app: AppButton, sub: String, row: LinearLayout): View {
         val shadow = LinearLayout(this).apply {
@@ -276,6 +326,7 @@ class SettingsActivity : Activity() {
             gravity = android.view.Gravity.CENTER_VERTICAL
             setBackgroundColor(0xFF2E2E33.toInt())
             setPadding(dp(4), dp(6), dp(4), dp(6))
+            addView(appRowLogo(app))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER_VERTICAL

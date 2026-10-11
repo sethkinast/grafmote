@@ -75,6 +75,11 @@ class MainActivity : Activity(), TvConnection.Listener {
 
         tvSpinner = findViewById(R.id.tvSpinner)
         statusDot = findViewById(R.id.statusDot)
+        // Round 40: the whole pill is one touch target — taps on the LED,
+        // the label, or the chevron all open the selector. The pill's
+        // selector background gives the single consistent pressed state;
+        // the spinner keeps its own touch handling for its own area.
+        findViewById<View>(R.id.tvPill).setOnClickListener { tvSpinner.performClick() }
         appsRow = findViewById(R.id.appsRow)
         appsScroll = findViewById(R.id.appsScroll)
         appsGrid = findViewById(R.id.appsGrid)
@@ -96,7 +101,10 @@ class MainActivity : Activity(), TvConnection.Listener {
         key(R.id.btnVolDown, "VOLDOWN")
         key(R.id.btnChUp, "CHUP")
         key(R.id.btnChDown, "CHDOWN")
-        key(R.id.btnPlayPause, "PLAYPAUSE")
+        // Round 40: PAUSE (wire KEY_PAUSE) is the play/pause toggle — the
+        // reference key list has KEY_PAUSE and no KEY_PLAYPAUSE, and the
+        // physical remote's play/pause button sends PAUSE.
+        key(R.id.btnPlayPause, "PAUSE")
         findViewById<View>(R.id.btnPower).setOnClickListener { v ->
             Haptics.tick(v, hapticEnabled())
             current?.let { conn.togglePower(it, effectivePower()) }
@@ -308,11 +316,17 @@ class MainActivity : Activity(), TvConnection.Listener {
         val icon = app.iconUrl?.trim().orEmpty()
         if (icon.isEmpty()) {
             // Square-ish rounded tiles with the same top-right-light gradient.
+            // Round 40: single line with end-ellipsis, centered — multi-word
+            // names (e.g. "CBS News") never wrap, so they stay vertically
+            // centered exactly like single-word ones.
             return Button(this).apply {
                 text = app.label
                 textSize = 14f
-                maxLines = 2
+                maxLines = 1
+                setSingleLine(true)
+                ellipsize = android.text.TextUtils.TruncateAt.END
                 gravity = Gravity.CENTER
+                includeFontPadding = false
                 setBackgroundResource(R.drawable.btn_face_selector)
                 elevation = dp(1).toFloat()
                 setOnClickListener { v -> launch(v, this) }
