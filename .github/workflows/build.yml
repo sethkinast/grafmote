@@ -58,3 +58,37 @@ jobs:
         with:
           name: grafmote-release
           path: app/build/outputs/apk/release/*.apk
+
+  # Rolling prerelease: GitHub Release assets download as raw files (no ZIP),
+  # unlike actions/upload-artifact which always serves downloads as a ZIP.
+  # Updates the same `latest` prerelease on every master push.
+  publish:
+    if: github.ref == 'refs/heads/master'
+    needs: [build, build-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: grafmote-debug
+          path: ./artifacts/debug
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: grafmote-release
+          path: ./artifacts/release
+      - name: Rename APKs
+        run: |
+          mv ./artifacts/debug/*.apk ./grafmote-debug.apk
+          if ls ./artifacts/release/*.apk 1> /dev/null 2>&1; then mv ./artifacts/release/*.apk ./grafmote-release.apk; fi
+          ls -l ./*.apk
+      - name: Publish rolling prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          prerelease: true
+          name: Latest build
+          body: Automated build from commit ${{ github.sha }}.
+          files: |
+            grafmote-*.apk
