@@ -15,8 +15,27 @@ android {
         versionName '1.0'
     }
 
+    signingConfigs {
+        // Release signing reads ONLY from environment variables so no key
+        // material ever lands in the repo. CI decodes the KEYSTORE_BASE64
+        // secret into a temp file and passes its path via KEYSTORE_PATH;
+        // local release builds export the same four variables. When the
+        // variables are absent (local dev, CI without secrets) this block
+        // stays empty and debug builds are unaffected.
+        release {
+            def keystorePath = System.getenv("KEYSTORE_PATH")
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
         }
         debug {

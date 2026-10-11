@@ -8,29 +8,188 @@ import java.net.DatagramSocket
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONObject
 
 /**
- * Optional SSDP scan for Samsung TVs on the LAN. Sends M-SEARCH for
- * urn:samsung.com:device:RemoteControl:1, collects LOCATION URLs, then
- * resolves each responder's friendly name via http://<ip>:8001/api/v2/
- * (device.name), falling back to the LOCATION device XML's
- * <friendlyName>. Failures just yield an empty list and the user can
- * always add a TV by IP manually.
+ * LAN scan for Samsung TVs.
  *
- * A WifiManager multicast lock is held for the duration of the scan:
- * without it Android's WiFi stack silently drops incoming multicast
- * packets, so the M-SEARCH goes out but responses never reach the app.
- * The lock is always released in a finally block. The scan runs only on
+ * SSDP M-SEARCH alone finds zero TVs on some networks (multicast filtered),
+ * so the primary mechanism is an active subnet sweep: GET
+ * http://<ip>:8001/api/v2/ on every host of the phone's /24 with a short
+ * timeout and high concurrency. A fast SSDP pass runs first only because it
+ * is cheap (~1.5s) and can catch TVs that answer multicast but not the sweep.
+ *
+ * A WifiManager multicast lock is held for the SSDP phase only: without it
+ * Android's WiFi stack silently drops incoming multicast packets. The sweep
+ * itself is plain unicast HTTP and needs no lock. The scan runs only on
  * demand (Settings "Scan" button) so it has no effect on cold start.
  */
 object Ssdp {
     data class Found(val ip: String, val name: String)
 
-    fun discover(context: Context, timeoutMs: Int = 4000): List<Found> {
-        // Hold a multicast lock so M-SEARCH replies reach us on WiFi.
+    /**
+     * @param noWifi true when the phone is not on WiFi (mobile data / WiFi
+     * off) — nothing was scanned; the UI should say so instead of reporting
+     * "no TVs found".
+     */
+    data class ScanResult(val found: List<Found>, val noWifi: Boolean)
+
+    /** Hosts probed in parallel. 253 hosts / 50 ≈ 6 batches × ~400ms. */
+    const val PROBE_CONCURRENCY = 50
+
+    /** Per-connection connect+read timeout for sweep probes. */
+    const val PROBE_TIMEOUT_MS = 400
+
+    /** SSDP first pass is capped short — the sweep is the real mechanism. */
+    private const val SSDP_FIRST_PASS_MS = 1500
+
+    /** Hard cap on the whole sweep so wall time stays under ~10s for a /24. */
+    private const val SWEEP_WALL_CAP_MS = 9000L
+
+    /**
+     * Keys always present in a genuine Samsung api/v2 "device" object
+     * (ground truth: the Hubitat driver reads PowerState / wifiMac /
+     * TokenAuthSupport / model / duid). Random port-8001 responders
+     * (printers, cameras, routers) return non-JSON or JSON without a Samsung
+     * "device" object and are never listed.
+     */
+    private val SAMSUNG_KEYS = setOf(
+        "duid", "id", "model", "modelName",
+        "TokenAuthSupport", "PowerState", "wifiMac", "FrameTVSupport"
+    )
+
+    fun discover(
+        context: Context,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }
+    ): ScanResult {
         val wifi = context.applicationContext
             .getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val selfIp = wifiIpInt(wifi)
+        if (selfIp == null) return ScanResult(emptyList(), noWifi = true)
+
+        // Fast SSDP first pass (multicast lock held only for this phase).
+        val ssdpFound = withMulticastLock(wifi) { ssdpScan(SSDP_FIRST_PASS_MS) }
+        // Primary mechanism: active sweep of the phone's /24.
+        val swept = sweep(selfIp, onProgress)
+
+        // Merge, one entry per IP. Prefer a real friendly name over a bare IP.
+        val merged = LinkedHashMap<String, Found>()
+        for (f in ssdpFound) merged[f.ip] = f
+        for (f in swept) {
+            val prev = merged[f.ip]
+            merged[f.ip] = if (prev == null || prev.name == prev.ip) f else prev
+        }
+        return ScanResult(merged.values.toList(), noWifi = false)
+    }
+
+    /** Phone's WiFi IP as a little-endian int, or null when not on WiFi. */
+    @Suppress("DEPRECATION")
+    private fun wifiIpInt(wifi: WifiManager?): Int? {
+        if (wifi == null) return null
+        try {
+            if (!wifi.isWifiEnabled) return null
+        } catch (_: Exception) {
+            return null
+        }
+        val ip = try {
+            wifi.connectionInfo?.ipAddress ?: 0
+        } catch (_: Exception) {
+            0
+        }
+        // 0 means no WiFi association (mobile data, WiFi off, airplane mode).
+        return if (ip == 0) null else ip
+    }
+
+    // ---- Subnet sweep (primary) ----
+
+    // NOTE (subnet size): LANs larger than /24 (e.g. /23 or /16) are
+    // deliberately NOT fully probed — thousands of hosts would blow the ~10s
+    // wall-time budget. Only the /24 containing the phone's IP is swept;
+    // TVs on a different /24 of a larger subnet need manual IP entry.
+    private fun probeIps(selfIp: Int): List<String> {
+        val a = selfIp and 0xFF
+        val b = (selfIp shr 8) and 0xFF
+        val c = (selfIp shr 16) and 0xFF
+        val selfLast = (selfIp shr 24) and 0xFF
+        val prefix = "$a.$b.$c."
+        return (1..254).filter { it != selfLast }.map { "$prefix$it" }
+    }
+
+    private fun sweep(selfIp: Int, onProgress: (Int, Int) -> Unit): List<Found> {
+        val ips = probeIps(selfIp)
+        val pool = Executors.newFixedThreadPool(PROBE_CONCURRENCY)
+        val done = AtomicInteger(0)
+        try {
+            val futures = ips.map { ip ->
+                pool.submit(Callable<Found?> {
+                    try {
+                        probeHost(ip)
+                    } finally {
+                        onProgress(done.incrementAndGet(), ips.size)
+                    }
+                })
+            }
+            pool.shutdown()
+            // Collect with a global deadline: each probe self-limits via its
+            // socket timeouts, but a wedged socket must never stall the scan
+            // past the wall-time budget.
+            val out = mutableListOf<Found>()
+            val deadline = System.currentTimeMillis() + SWEEP_WALL_CAP_MS
+            for (f in futures) {
+                val remaining = deadline - System.currentTimeMillis()
+                if (remaining <= 0) break
+                try {
+                    f.get(
+                        minOf(remaining, (PROBE_TIMEOUT_MS * 3).toLong()),
+                        TimeUnit.MILLISECONDS
+                    )?.let { out.add(it) }
+                } catch (_: Exception) {
+                    // Timeout / refused / non-Samsung → not a TV, skip.
+                }
+            }
+            return out
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    /** GET api/v2; returns a Found only if the host identifies as Samsung. */
+    private fun probeHost(ip: String): Found? {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = URL("http://$ip:8001/api/v2/").openConnection() as HttpURLConnection
+            conn.connectTimeout = PROBE_TIMEOUT_MS
+            conn.readTimeout = PROBE_TIMEOUT_MS
+            conn.instanceFollowRedirects = false
+            if (conn.responseCode != 200) return null
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            val dev = try {
+                JSONObject(body).optJSONObject("device")
+            } catch (_: Exception) {
+                null
+            } ?: return null
+            if (!isSamsung(dev)) return null
+            val name = dev.optString("name", "").trim().ifEmpty { ip }
+            Found(ip, name)
+        } catch (_: Exception) {
+            null
+        } finally {
+            try {
+                conn?.disconnect()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun isSamsung(dev: JSONObject): Boolean = SAMSUNG_KEYS.any { dev.has(it) }
+
+    // ---- SSDP first pass (cheap, best-effort) ----
+
+    private inline fun <T> withMulticastLock(wifi: WifiManager?, block: () -> T): T {
         val lock = try {
             wifi?.createMulticastLock("GrafRemoteSsdp")?.apply {
                 setReferenceCounted(true)
@@ -45,7 +204,7 @@ object Ssdp {
             } catch (e: Exception) {
                 Log.d(TAG, "multicast lock acquire failed: ${e.message}")
             }
-            return scan(timeoutMs)
+            return block()
         } finally {
             try {
                 if (lock?.isHeld == true) lock.release()
@@ -55,7 +214,7 @@ object Ssdp {
         }
     }
 
-    private fun scan(timeoutMs: Int): List<Found> {
+    private fun ssdpScan(timeoutMs: Int): List<Found> {
         val locations = mutableSetOf<String>()
         var sock: DatagramSocket? = null
         try {
@@ -89,7 +248,7 @@ object Ssdp {
                 }
             }
         } catch (e: Exception) {
-            Log.d(TAG, "discover failed: ${e.message}")
+            Log.d(TAG, "ssdp scan failed: ${e.message}")
         } finally {
             try {
                 sock?.close()
@@ -107,7 +266,11 @@ object Ssdp {
     }
 
     private fun resolveName(ip: String, locations: Set<String>): String {
-        deviceNameV2(ip)?.let { if (it.isNotEmpty()) return it }
+        // Same friendly-name source as the sweep: device.name from api/v2.
+        // (The sweep already probed this IP too; this extra GET only happens
+        // for SSDP-first-pass hosts and is capped by PROBE_TIMEOUT_MS.)
+        val v2name = probeHost(ip)?.name
+        if (v2name != null && v2name != ip) return v2name
         for (loc in locations) {
             try {
                 if (URL(loc).host != ip) continue
@@ -116,25 +279,9 @@ object Ssdp {
             }
             describeXml(loc)?.let { if (it.isNotEmpty()) return it }
         }
-        return ip
-    }
-
-    /** GET http://<ip>:8001/api/v2/ and read device.name (Samsung LAN API). */
-    private fun deviceNameV2(ip: String): String? {
-        var conn: HttpURLConnection? = null
-        return try {
-            conn = URL("http://$ip:8001/api/v2/").openConnection() as HttpURLConnection
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
-            if (conn.responseCode != 200) return null
-            val body = conn.inputStream.bufferedReader().use { it.readText() }
-            JSONObject(body).optJSONObject("device")?.optString("name")?.trim()?.ifEmpty { null }
-        } catch (e: Exception) {
-            Log.d(TAG, "api/v2 name failed for $ip: ${e.message}")
-            null
-        } finally {
-            conn?.disconnect()
-        }
+        // The M-SEARCH ST already scoped SSDP responders to Samsung, so list
+        // the host even when neither name source answered.
+        return v2name ?: ip
     }
 
     /** Fallback: GET the SSDP LOCATION device XML and read <friendlyName>. */
@@ -142,8 +289,8 @@ object Ssdp {
         var conn: HttpURLConnection? = null
         return try {
             conn = URL(location).openConnection() as HttpURLConnection
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
+            conn.connectTimeout = 1500
+            conn.readTimeout = 1500
             if (conn.responseCode != 200) return null
             val xml = conn.inputStream.bufferedReader().use { it.readText() }
             Regex("<friendlyName>(.*?)</friendlyName>", RegexOption.DOT_MATCHES_ALL)
@@ -152,7 +299,10 @@ object Ssdp {
             Log.d(TAG, "describe failed for $location: ${e.message}")
             null
         } finally {
-            conn?.disconnect()
+            try {
+                conn?.disconnect()
+            } catch (_: Exception) {
+            }
         }
     }
 

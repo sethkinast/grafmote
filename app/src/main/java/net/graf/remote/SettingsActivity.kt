@@ -175,17 +175,28 @@ class SettingsActivity : Activity() {
     }
 
     private fun scan() {
+        val btn = findViewById<Button>(R.id.btnScan)
+        btn.isEnabled = false
+        btn.text = "Scanning…"
         toast("Scanning LAN for Samsung TVs…")
         thread {
-            val found = Ssdp.discover(this@SettingsActivity)
+            val result = Ssdp.discover(this@SettingsActivity) { done, total ->
+                runOnUiThread { btn.text = "Scanning $done/$total" }
+            }
             runOnUiThread {
-                if (found.isEmpty()) {
+                btn.isEnabled = true
+                btn.text = "Scan LAN"
+                if (result.noWifi) {
+                    toast("Connect to Wi-Fi first — the scan needs the local network")
+                    return@runOnUiThread
+                }
+                if (result.found.isEmpty()) {
                     toast("No TVs found — add by IP manually")
                     return@runOnUiThread
                 }
                 val all = store.loadTvs()
                 var added = 0
-                for (f in found) {
+                for (f in result.found) {
                     if (all.none { it.host == f.ip }) {
                         all.add(Tv(UUID.randomUUID().toString(), f.name, f.ip))
                         added++

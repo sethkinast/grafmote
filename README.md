@@ -71,3 +71,43 @@ SDK build-tools are x86-64-only and cannot run on ARM Linux).
 
 Sideload the debug APK. `INTERNET` permission is required for LAN sockets;
 `usesCleartextTraffic` is required because the Samsung LAN API is plain HTTP.
+
+## Release signing
+
+No key material is committed to the repo, ever. `app/build.gradle` reads the
+release signing config ONLY from environment variables, and CI decodes the
+keystore from a secret at build time.
+
+One-time setup (on your own machine, not in the repo):
+
+```sh
+# 1. Generate the keystore (keep the file + passwords private):
+keytool -genkeypair -v -keystore grafmote-release.jks -alias grafmote \
+  -keyalg RSA -keysize 2048 -validity 10000
+
+# 2. Add these 4 secrets to the repo
+#    (GitHub → Settings → Secrets and variables → Actions → New secret):
+#    KEYSTORE_BASE64    <- output of: base64 -w0 grafmote-release.jks
+#    KEYSTORE_PASSWORD  <- the keystore password you chose
+#    KEY_ALIAS          <- e.g. grafmote
+#    KEY_PASSWORD       <- the key password you chose
+```
+
+The `build-release` CI job is gated on `KEYSTORE_BASE64` existing, so CI
+stays green until the secrets are added. Once they exist, every push builds
+a signed release APK alongside the debug one (workflow artifacts).
+
+Local signed build with the same four variables:
+
+```sh
+export KEYSTORE_PATH=$PWD/grafmote-release.jks KEYSTORE_PASSWORD=... \
+  KEY_ALIAS=grafmote KEY_PASSWORD=...
+./gradlew assembleRelease
+# APK: app/build/outputs/apk/release/app-release.apk
+```
+
+WARNING: switching from the debug signature to the release signature
+requires uninstalling the debug app first (Android rejects same-package
+installs with a different signature). Uninstalling wipes app data — the TV
+list and pairing tokens are lost, and TVs must be re-paired once (see
+"Pairing" above).

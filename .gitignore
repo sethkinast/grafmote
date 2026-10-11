@@ -1,3 +1,8 @@
+# Release signing: never commit key material
+*.jks
+*.keystore
+*.p12
+
 # Gradle
 .gradle/
 build/
