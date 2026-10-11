@@ -198,7 +198,7 @@ class MainActivity : Activity(), TvConnection.Listener {
             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
         current?.let { c -> tvs.indexOfFirst { it.id == c.id }.takeIf { it >= 0 }?.let { tvSpinner.setSelection(it) } }
-        lastSpinnerPos = tvSpinner.selectedPosition
+        lastSpinnerPos = tvSpinner.selectedItemPosition
         spinnerGuard = false
     }
 
