@@ -1,0 +1,293 @@
+[
+ {
+  "name": "Amazon Alexa",
+  "ids": [
+   "3202004020626"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202004020626/icon_198x198_20210426230531000.png"
+ },
+ {
+  "name": "Amazon Music",
+  "ids": [
+   "3201710014874"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201710014874/icon_198x198_20221109064337256.png"
+ },
+ {
+  "name": "Apple Music",
+  "ids": [
+   "3201908019041"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201908019041/icon_198x198_20211111105954759.png"
+ },
+ {
+  "name": "Apple TV",
+  "ids": [
+   "3201807016597"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201807016597/icon_198x198_20210716072735455.png"
+ },
+ {
+  "name": "BritBox",
+  "ids": [
+   "3201909019175",
+   "3201905018484"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201905018484/icon_198x198_20240408122301380.png"
+ },
+ {
+  "name": "Crunchyroll",
+  "ids": [
+   "3202302030097"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202302030097/icon_198x198_20240729082452564.png"
+ },
+ {
+  "name": "DAZN",
+  "ids": [
+   "3201806016390"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201806016390/icon_198x198_20240529034626589.png"
+ },
+ {
+  "name": "Deezer",
+  "ids": [
+   "3201608010191"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201608010191/icon_198x198_20231211120211353.png"
+ },
+ {
+  "name": "Discovery+",
+  "ids": [
+   "3201803015944",
+   "3202006021105"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202006021105/icon_198x198_20210706050608049.png"
+ },
+ {
+  "name": "Disney+",
+  "ids": [
+   "3201901017640",
+   "3202009021709",
+   "3202204027038"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201901017640/icon_198x198_20240417014647928.png"
+ },
+ {
+  "name": "Explore Google Assistant",
+  "ids": [
+   "3202004020674"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202004020674/icon_198x198_20201005013128000.png"
+ },
+ {
+  "name": "Fandango at Home - Vudu",
+  "ids": [
+   "111012010001"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/111012010001/icon_198x198_20240719044257230.png"
+ },
+ {
+  "name": "Fox Sports",
+  "ids": [
+   "3201911019625"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201911019625/icon_198x198_20240125104754061.png"
+ },
+ {
+  "name": "Gallery",
+  "ids": [
+   "3201710015037"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201710015037/icon_198x198_20231115032952000.png"
+ },
+ {
+  "name": "GeForce NOW",
+  "ids": [
+   "3202102023078"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202102023078/icon_198x198_20220906073028108.png"
+ },
+ {
+  "name": "HBO Max / Max",
+  "ids": [
+   "3202301029760"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202301029760/icon_198x198_20230504045632984.png"
+ },
+ {
+  "name": "Hulu",
+  "ids": [
+   "3201601007625"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201601007625/icon_198x198_20210817064127438.png"
+ },
+ {
+  "name": "Internet",
+  "ids": [
+   "org.tizen.browser",
+   "3201907018784",
+   "3202010022079"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202010022079/icon_198x198_20240104061606698.png"
+ },
+ {
+  "name": "IPTV Smarters Pro",
+  "ids": [
+   "3202009021808"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202009021808/icon_198x198_20210921110356722.png"
+ },
+ {
+  "name": "MLB",
+  "ids": [
+   "3201603008210"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201603008210/icon_198x198_20210720063811032.png"
+ },
+ {
+  "name": "Netflix",
+  "ids": [
+   "3201907018807",
+   "11101200001"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201907018807/icon_198x198_20220913014109378.png"
+ },
+ {
+  "name": "Paramount Plus",
+  "ids": [
+   "3201710014981",
+   "3202110025305"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201710014981/icon_198x198_20220110073425813.png"
+ },
+ {
+  "name": "PBS Kids",
+  "ids": [
+   "3201809016952"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201809016952/icon_198x198_20221114030602994.png"
+ },
+ {
+  "name": "Peacock TV",
+  "ids": [
+   "3202006020991"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202006020991/icon_198x198_20240814045843629.png"
+ },
+ {
+  "name": "Plex",
+  "ids": [
+   "3201512006963"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201512006963/icon_198x198_20220526120536805.png"
+ },
+ {
+  "name": "Pluto TV",
+  "ids": [
+   "3201808016802"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201808016802/icon_198x198_20240830071201812.png"
+ },
+ {
+  "name": "Prime Video",
+  "ids": [
+   "3201910019365",
+   "3201512006785"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201910019365/icon_198x198_20230604091402467.png"
+ },
+ {
+  "name": "Red Bull TV",
+  "ids": [
+   "3201602007756"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201602007756/icon_198x198_20220801040018251.png"
+ },
+ {
+  "name": "Sling TV",
+  "ids": [
+   "3201707014448"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201707014448/icon_198x198_20240402012117519.png"
+ },
+ {
+  "name": "SmartOne IPTV",
+  "ids": [
+   "3202102022877"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202102022877/icon_198x198_20210905122250777.png"
+ },
+ {
+  "name": "SmartThings",
+  "ids": [
+   "3201710015016",
+   "3201910019378",
+   "3202311033054"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202311033054/icon_198x198_20231201054913082.png"
+ },
+ {
+  "name": "Spotify",
+  "ids": [
+   "3201606009684"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201606009684/icon_198x198_20210901091547082.png"
+ },
+ {
+  "name": "TikTok",
+  "ids": [
+   "3202008021577"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202008021577/icon_198x198_20210723104707466.png"
+ },
+ {
+  "name": "Tubi",
+  "ids": [
+   "3201504001965"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201504001965/icon_198x198_20240325061652171.png"
+ },
+ {
+  "name": "Twitch",
+  "ids": [
+   "3202203026841"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202203026841/icon_198x198_20220406091057005.png"
+ },
+ {
+  "name": "Xbox",
+  "ids": [
+   "3202203026799"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3202203026799/icon_198x198_20220609112120450.png"
+ },
+ {
+  "name": "Xfinity Stream",
+  "ids": [
+   "3201803015836"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201803015836/icon_198x198_20220908042704281.png"
+ },
+ {
+  "name": "YouTube",
+  "ids": [
+   "111299001912"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/111299001912/icon_198x198_20170921013733000.png"
+ },
+ {
+  "name": "YouTube TV",
+  "ids": [
+   "3201707014489"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201707014489/icon_198x198_20190507153712000.png"
+ },
+ {
+  "name": "ZEE5",
+  "ids": [
+   "3201810017104"
+  ],
+  "icon": "https://d1oxlq5h9kq8q5.cloudfront.net/tvstore/contents/3201810017104/icon_198x198_20210908064150405.png"
+ }
+]

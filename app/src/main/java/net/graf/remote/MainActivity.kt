@@ -11,10 +11,12 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import kotlin.concurrent.thread
 
 /**
  * Single-activity remote. Cold-start path is deliberately trivial: inflate the
@@ -105,6 +107,11 @@ class MainActivity : Activity(), TvConnection.Listener {
 
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
+
+        // Warm the vendored app catalog off the UI thread (round 21): the
+        // ~7KB res/raw parse costs ~1ms but stays off the cold-start path
+        // entirely; tiles only need the stored iconUrl, never the catalog.
+        thread { AppCatalog.load(this) }
     }
 
     override fun onResume() {
@@ -193,32 +200,80 @@ class MainActivity : Activity(), TvConnection.Listener {
             return
         }
         for (app in apps) {
+            val s = dp(97)
+            val lp = LinearLayout.LayoutParams(s, s).apply { setMargins(dp(4), 0, dp(4), 0) }
+            appsRow.addView(appTile(app), lp)
+        }
+    }
+
+    /**
+     * App tile (round 21): buttons without a stored logo are today's
+     * text-only tile, byte-for-byte the same look and behavior. Buttons with
+     * a logo show the image above the label inside the same tile frame —
+     * same size, same btn_face_selector pressed states, same tap behavior
+     * (tries every fallback ID in order). The ImageView starts GONE and only
+     * appears once IconLoader has the bitmap cached or downloaded, so offline
+     * tiles are exactly the text-only tile.
+     */
+    private fun appTile(app: AppButton): View {
+        val launch = { v: View, tile: View ->
+            Haptics.tick(v, hapticEnabled())
+            val tv = current
+            if (tv == null) {
+                toast("Add a TV first (gear icon)")
+                return@launch
+            }
+            tile.isEnabled = false
+            conn.launchApp(tv, app.id, app.launchIds()) { ok ->
+                tile.isEnabled = true
+                if (!ok) toast("Launch failed — is ${tv.nick} on?")
+            }
+        }
+        val icon = app.iconUrl?.trim().orEmpty()
+        if (icon.isEmpty()) {
             // Square-ish rounded tiles with the same top-right-light gradient.
-            val b = Button(this).apply {
+            return Button(this).apply {
                 text = app.label
                 textSize = 14f
                 maxLines = 2
                 gravity = Gravity.CENTER
                 setBackgroundResource(R.drawable.btn_face_selector)
                 elevation = dp(1).toFloat()
-                setOnClickListener { v ->
-                    Haptics.tick(v, hapticEnabled())
-                    val tv = current
-                    if (tv == null) {
-                        toast("Add a TV first (gear icon)")
-                        return@setOnClickListener
-                    }
-                    isEnabled = false
-                    conn.launchApp(tv, app.appId) { ok ->
-                        isEnabled = true
-                        if (!ok) toast("Launch failed — is ${tv.nick} on?")
-                    }
-                }
+                setOnClickListener { v -> launch(v, this) }
             }
-            val s = dp(97)
-            val lp = LinearLayout.LayoutParams(s, s).apply { setMargins(dp(4), 0, dp(4), 0) }
-            appsRow.addView(b, lp)
         }
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundResource(R.drawable.btn_face_selector)
+            elevation = dp(1).toFloat()
+            isClickable = true
+            isFocusable = true
+        }
+        val iv = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = app.label
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(dp(50), dp(50)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+        }
+        val label = TextView(this).apply {
+            text = app.label
+            textSize = 12f
+            maxLines = 2
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(2), dp(4), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        tile.addView(iv)
+        tile.addView(label)
+        tile.setOnClickListener { v -> launch(v, tile) }
+        IconLoader.loadInto(iv, icon)
+        return tile
     }
 
     // ---- TvConnection.Listener (already on main thread) ----
