@@ -33,12 +33,15 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <!-- Raised selector pill: single tappable-looking unit. -->
+        <!-- Raised selector pill: single tappable-looking unit. Selector
+             background + addStatesFromChildren so a spinner press darkens
+             the whole pill (same darker pressed tint as every other face). -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="56dp"
             android:layout_weight="1"
-            android:background="@drawable/topbar_selector_pill"
+            android:addStatesFromChildren="true"
+            android:background="@drawable/topbar_selector_pill_selector"
             android:elevation="1dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">

@@ -81,18 +81,23 @@ class MainActivity : Activity(), TvConnection.Listener {
         key(R.id.btnChUp, "CHUP")
         key(R.id.btnChDown, "CHDOWN")
         key(R.id.btnPlayPause, "PLAYPAUSE")
-        findViewById<View>(R.id.btnPower).setOnClickListener {
+        findViewById<View>(R.id.btnPower).setOnClickListener { v ->
+            Haptics.tick(v, hapticEnabled())
             current?.let { conn.togglePower(it, effectivePower()) }
                 ?: toast("Add a TV first (gear icon)")
         }
-        findViewById<View>(R.id.btnSettings).setOnClickListener {
+        findViewById<View>(R.id.btnSettings).setOnClickListener { v ->
+            Haptics.tick(v, hapticEnabled())
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
         tvSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                 if (spinnerGuard) return
-                if (pos in tvs.indices) switchTo(tvs[pos])
+                if (pos in tvs.indices) {
+                    Haptics.tick(v ?: tvSpinner, tvs[pos].haptic)
+                    switchTo(tvs[pos])
+                }
             }
 
             override fun onNothingSelected(p: AdapterView<*>?) {}
@@ -124,11 +129,16 @@ class MainActivity : Activity(), TvConnection.Listener {
     }
 
     private fun key(viewId: Int, samsungKey: String) {
-        findViewById<View>(viewId).setOnClickListener {
+        findViewById<View>(viewId).setOnClickListener { v ->
+            Haptics.tick(v, hapticEnabled())
             current?.let { conn.sendKey(it, samsungKey) }
                 ?: toast("Add a TV first (gear icon)")
         }
     }
+
+    /** Per-TV haptic toggle; default ON (including when no TV exists yet). */
+    private fun hapticEnabled(): Boolean =
+        current?.let { store.isHapticEnabled(it.id) } ?: true
 
     private fun switchTo(tv: Tv?, force: Boolean = false) {
         if (!force && tv?.id == current?.id) return
@@ -173,7 +183,8 @@ class MainActivity : Activity(), TvConnection.Listener {
                 gravity = Gravity.CENTER
                 setBackgroundResource(R.drawable.btn_face_selector)
                 elevation = dp(1).toFloat()
-                setOnClickListener {
+                setOnClickListener { v ->
+                    Haptics.tick(v, hapticEnabled())
                     val tv = current
                     if (tv == null) {
                         toast("Add a TV first (gear icon)")

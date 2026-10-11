@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import java.net.HttpURLConnection
@@ -45,8 +46,9 @@ class SettingsActivity : Activity() {
         val tvs = store.loadTvs()
         if (tvs.isEmpty()) tvList.addView(hint("No TVs yet — add one by IP or scan."))
         for (tv in tvs) {
+            val sub = if (tv.haptic) tv.host else "${tv.host} · haptics off"
             tvList.addView(row(
-                "${tv.nick}\n${tv.host}",
+                "${tv.nick}\n$sub",
                 onEdit = { tvDialog(tv) },
                 onDelete = {
                     val all = store.loadTvs().filter { it.id != tv.id }
@@ -105,11 +107,16 @@ class SettingsActivity : Activity() {
             hint = "IP or hostname (e.g. 192.168.1.50)"
             setText(existing?.host ?: "")
         }
+        val haptic = Switch(this).apply {
+            text = "Haptic feedback"
+            isChecked = existing?.haptic ?: true
+        }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(8), dp(16), dp(8))
             addView(nick)
             addView(host)
+            addView(haptic)
         }
         AlertDialog.Builder(this)
             .setTitle(if (existing == null) "Add TV" else "Edit TV")
@@ -122,12 +129,14 @@ class SettingsActivity : Activity() {
                     return@setPositiveButton
                 }
                 val all = store.loadTvs()
+                val hapticOn = haptic.isChecked
                 if (existing == null) {
-                    all.add(Tv(UUID.randomUUID().toString(), n, h))
+                    all.add(Tv(UUID.randomUUID().toString(), n, h, haptic = hapticOn))
                 } else {
                     all.firstOrNull { it.id == existing.id }?.let {
                         it.nick = n
                         it.host = h
+                        it.haptic = hapticOn
                     }
                 }
                 store.saveTvs(all)
