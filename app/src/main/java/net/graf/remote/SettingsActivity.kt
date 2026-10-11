@@ -56,6 +56,9 @@ class SettingsActivity : Activity() {
      * completes. While true, hover events hold the placeholder at its
      * start slot instead of hit-testing against stale mid-layout geometry
      * (top-half-of-B reading as "above A" -> index 0).
+     * Round 37: the same gate is re-armed after EVERY placeholder move
+     * (see armSettleGate), so hover events arriving between a move and its
+     * layout pass hold instead of hit-testing stale row geometry.
      */
     private var dragSettling = false
     private var dragSettleListener: ViewTreeObserver.OnGlobalLayoutListener? = null
@@ -246,35 +249,13 @@ class SettingsActivity : Activity() {
                     // settles (one-shot global-layout listener, not a
                     // posted Runnable) so stale mid-layout geometry can't
                     // jump the placeholder on the first hover frames.
-                    dragSettling = true
+                    // Round 37: arming lives in armSettleGate(), re-armed
+                    // after every placeholder move for the same hazard.
                     pendingJumpIndex = null
                     val ph = ensurePlaceholder()
                     (ph.parent as? ViewGroup)?.removeView(ph)
                     appList.addView(ph, startIndex.coerceIn(0, appList.childCount))
-                    dragSettleListener?.let { prev ->
-                        try {
-                            appList.viewTreeObserver.removeOnGlobalLayoutListener(prev)
-                        } catch (_: Exception) {
-                        }
-                    }
-                    val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
-                        override fun onGlobalLayout() {
-                            try {
-                                appList.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                            } catch (_: Exception) {
-                            }
-                            if (dragSettleListener === this) dragSettleListener = null
-                            dragSettling = false
-                            pendingJumpIndex = null
-                        }
-                    }
-                    dragSettleListener = listener
-                    try {
-                        appList.viewTreeObserver.addOnGlobalLayoutListener(listener)
-                    } catch (_: Exception) {
-                        dragSettleListener = null
-                        dragSettling = false
-                    }
+                    armSettleGate()
                     true
                 } else {
                     false
@@ -527,6 +508,9 @@ class SettingsActivity : Activity() {
      * index is computed in placeholder-excluded space, so re-hovering the
      * slot the placeholder already models is a no-op instead of a
      * remove+re-add layout thump.
+     * Round 37: after an actual move, re-arm the settle gate — hover
+     * events arriving before the move's layout pass hold instead of
+     * hit-testing stale row geometry.
      */
     private fun movePlaceholder(target: View, above: Boolean) {
         val ph = ensurePlaceholder()
@@ -538,6 +522,43 @@ class SettingsActivity : Activity() {
         if (idx == current) return // already there: no-op
         (ph.parent as? ViewGroup)?.removeView(ph)
         appList.addView(ph, idx.coerceIn(0, appList.childCount))
+        armSettleGate()
+    }
+
+    /**
+     * Round 37: one-shot settle-gate arming, extracted from the drag-start
+     * path and reused after every placeholder move. Sets [dragSettling]
+     * until the next layout pass completes; hover events hold while set
+     * (see handleHover). Replaces any previously armed listener so at
+     * most one is ever registered. At most one frame of hold per move —
+     * drag feel is otherwise identical.
+     */
+    private fun armSettleGate() {
+        dragSettling = true
+        dragSettleListener?.let { prev ->
+            try {
+                appList.viewTreeObserver.removeOnGlobalLayoutListener(prev)
+            } catch (_: Exception) {
+            }
+        }
+        val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                try {
+                    appList.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                } catch (_: Exception) {
+                }
+                if (dragSettleListener === this) dragSettleListener = null
+                dragSettling = false
+                pendingJumpIndex = null
+            }
+        }
+        dragSettleListener = listener
+        try {
+            appList.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        } catch (_: Exception) {
+            dragSettleListener = null
+            dragSettling = false
+        }
     }
 
     /** Insertion index = non-dragged rows strictly before the placeholder. */
