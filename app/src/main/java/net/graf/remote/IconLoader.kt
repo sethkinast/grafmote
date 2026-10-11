@@ -41,17 +41,19 @@ object IconLoader {
 
     /**
      * Load [url] into [view]. Empty/blank URLs hide the view immediately.
-     * The view's tag is set to the URL; a recycled view whose tag changed
-     * before the fetch finished never gets a stale bitmap.
+     * The expected URL is tracked via a keyed tag (R.id.icon_url_tag), so
+     * it never clobbers the plain [View.getTag] that list adapters use for
+     * view lookup; a recycled view whose URL changed before the fetch
+     * finished never gets a stale bitmap.
      */
     fun loadInto(view: ImageView, url: String) {
         if (url.isBlank()) {
-            view.tag = null
+            view.setTag(R.id.icon_url_tag, null)
             view.setImageDrawable(null)
             view.visibility = View.GONE
             return
         }
-        view.tag = url
+        view.setTag(R.id.icon_url_tag, url)
         try {
             mem.get(url)?.let { bmp ->
                 view.setImageBitmap(bmp)
@@ -84,7 +86,7 @@ object IconLoader {
             }
             val ready = bmp
             main.post {
-                if (view.tag == url) {
+                if (view.getTag(R.id.icon_url_tag) == url) {
                     view.setImageBitmap(ready)
                     view.visibility = View.VISIBLE
                 }
