@@ -27,9 +27,15 @@
 
         <!-- Raised selector pill: single tappable-looking unit. Selector
              background + addStatesFromChildren so a spinner press darkens
-             the whole pill (same darker pressed tint as every other face). -->
+             the whole pill (same darker pressed tint as every other face).
+             Round 40: the whole pill is ONE touch target — the pill forwards
+             taps to the spinner, so LED, text, and chevron all open it with
+             a single consistent pressed state. -->
         <LinearLayout
+            android:id="@+id/tvPill"
             android:layout_width="0dp"
+            android:clickable="true"
+            android:focusable="true"
             android:layout_height="56dp"
             android:layout_weight="1"
             android:addStatesFromChildren="true"

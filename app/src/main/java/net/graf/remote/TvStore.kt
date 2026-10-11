@@ -209,13 +209,15 @@ class TvStore(ctx: Context) {
     }
 
     private fun defaultApps(): List<AppButton> = listOf(
-        // IDs verified: Jellyfin from the official jellyfin-tizen config.xml
-        // (tizen:application id); the rest from the Hubitat driver appIdList /
-        // translation table. If any stop working, use Settings "Add apps"
-        // (WebSocket ed.installedApp.get picker) to confirm the live TV IDs.
+        // Round 40: Seth's four verified defaults, in order. Jellyfin ID
+        // from the official jellyfin-tizen config.xml; the rest verified
+        // working on the target TV. Fresh installs only (loadApps seeds
+        // when no "apps" pref exists — never clobbers user config).
+        // Logos resolve via the round-30 catalog enrich on first sight;
+        // an ID with no catalog match keeps the letter-tile fallback.
         AppButton(UUID.randomUUID().toString(), "Jellyfin", "AprZAARz4r.Jellyfin"),
-        AppButton(UUID.randomUUID().toString(), "Disney+", "MCmYXNxgcu.DisneyPlus"),
-        AppButton(UUID.randomUUID().toString(), "Netflix", "org.tizen.netflix-app"),
-        AppButton(UUID.randomUUID().toString(), "YouTube", "9Ur5IzDKqV.TizenYouTube")
+        AppButton(UUID.randomUUID().toString(), "Disney+", "3201901017640"),
+        AppButton(UUID.randomUUID().toString(), "PBS Kids", "Rk72oKFsRS.OtterKidsProd"),
+        AppButton(UUID.randomUUID().toString(), "Hulu", "3201601007625")
     )
 }
