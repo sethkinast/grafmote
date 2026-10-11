@@ -330,25 +330,45 @@ class TvConnection(private val store: TvStore) {
 
     /** Launch an app via HTTP POST (driver's appOpenByName transport). */
     fun launchApp(tv: Tv, appId: String, cb: ((ok: Boolean) -> Unit)? = null) {
+        launchApp(tv, listOf(appId), cb)
+    }
+
+    /**
+     * Launch trying each ID in order until one answers HTTP 200 (round 21:
+     * catalog entries carry fallback IDs — regional/firmware variants of the
+     * same app). Single-ID buttons behave exactly as before.
+     */
+    fun launchApp(tv: Tv, appIds: List<String>, cb: ((ok: Boolean) -> Unit)? = null) {
+        val ordered = appIds.filter { it.isNotBlank() }.distinct()
         exec.execute {
             var ok = false
-            var conn: HttpURLConnection? = null
-            try {
-                val url = URL("http://${tv.host}:8001/api/v2/applications/$appId")
-                conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.connectTimeout = 6000
-                conn.readTimeout = 6000
-                conn.doOutput = true
-                conn.outputStream.use { it.write(ByteArray(0)) }
-                ok = conn.responseCode == 200
-            } catch (e: Exception) {
-                Log.d(TAG, "launchApp failed: ${e.message}")
-            } finally {
-                conn?.disconnect()
+            for (id in ordered) {
+                if (postLaunch(tv, id)) {
+                    ok = true
+                    break
+                }
             }
             val r = ok
             main.post { cb?.invoke(r) }
+        }
+    }
+
+    private fun postLaunch(tv: Tv, appId: String): Boolean {
+        var conn: HttpURLConnection? = null
+        return try {
+            val url = URL("http://${tv.host}:8001/api/v2/applications/$appId")
+            conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 6000
+            conn.readTimeout = 6000
+            conn.doOutput = true
+            conn.outputStream.use { it.write(ByteArray(0)) }
+            conn.responseCode == 200
+        } catch (e: Exception) {
+            Log.d(TAG, "launchApp failed: ${e.message}")
+            false
+        } finally {
+            conn?.disconnect()
         }
     }
 

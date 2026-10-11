@@ -2,8 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Required for LAN sockets (HTTP + WebSocket + Wake-on-LAN UDP).
-         The app is LAN-only by design: it never connects anywhere except
-         the TV IPs the user configures. No ads, analytics, or cloud. -->
+         The remote core is LAN-only by design: it never connects anywhere
+         except the TV IPs the user configures. The sole exception is
+         best-effort app-logo loading (round 21) from the Samsung CDN URLs
+         vendored in res/raw — tiles work fully offline without them.
+         No ads, analytics, or cloud. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Required for the subnet sweep: the phone's WiFi IP (via WifiManager)
          determines which /24 to probe. Normal (non-dangerous) permission, no

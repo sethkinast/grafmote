@@ -24,7 +24,31 @@ data class Tv(
     var haptic: Boolean = true
 )
 
-data class AppButton(val id: String, var label: String, var appId: String)
+/**
+ * App-launch button (round 21): [appId] is the primary launch ID;
+ * [appIds] holds every fallback ID in launch order (catalog entries carry
+ * several — e.g. regional variants — and launch tries each until one
+ * succeeds). Buttons stored before round 21 only have [appId], which loads
+ * as a single-element [appIds]. [iconUrl] is a nullable Samsung CDN PNG;
+ * null/blank means a text-only tile.
+ */
+data class AppButton(
+    val id: String,
+    var label: String,
+    var appId: String,
+    var appIds: List<String> = listOf(appId),
+    var iconUrl: String? = null
+) {
+    /** All IDs to try, primary first; never empty. */
+    fun launchIds(): List<String> {
+        val ordered = mutableListOf<String>()
+        if (appId.isNotBlank()) ordered.add(appId)
+        for (alt in appIds) {
+            if (alt.isNotBlank() && !ordered.contains(alt)) ordered.add(alt)
+        }
+        return ordered.ifEmpty { listOf(appId) }
+    }
+}
 
 class TvStore(ctx: Context) {
     private val prefs: SharedPreferences =
@@ -109,11 +133,24 @@ class TvStore(ctx: Context) {
         val arr = JSONArray(prefs.getString("apps", "[]"))
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
+            val appId = o.optString("appId", "")
+            val ids = mutableListOf<String>()
+            val rawIds = o.optJSONArray("appIds")
+            if (rawIds != null) {
+                for (j in 0 until rawIds.length()) {
+                    val alt = rawIds.optString(j, "").trim()
+                    if (alt.isNotEmpty() && !ids.contains(alt)) ids.add(alt)
+                }
+            }
+            if (ids.isEmpty() && appId.isNotEmpty()) ids.add(appId)
+            val icon = o.optString("iconUrl", "").trim().ifEmpty { null }
             out.add(
                 AppButton(
                     id = o.optString("id", UUID.randomUUID().toString()),
                     label = o.optString("label", ""),
-                    appId = o.optString("appId", "")
+                    appId = appId,
+                    appIds = ids.toList(),
+                    iconUrl = icon
                 )
             )
         }
@@ -123,7 +160,10 @@ class TvStore(ctx: Context) {
     fun saveApps(apps: List<AppButton>) {
         val arr = JSONArray()
         for (a in apps) {
-            arr.put(JSONObject().put("id", a.id).put("label", a.label).put("appId", a.appId))
+            val o = JSONObject().put("id", a.id).put("label", a.label).put("appId", a.appId)
+            o.put("appIds", JSONArray(a.launchIds()))
+            if (!a.iconUrl.isNullOrBlank()) o.put("iconUrl", a.iconUrl)
+            arr.put(o)
         }
         prefs.edit().putString("apps", arr.toString()).apply()
     }
