@@ -18,6 +18,9 @@ driver by Dave Gutheinz
   no custom Application class, no ContentProviders, single OkHttp dependency.
   Buttons are tappable instantly — key events queue until the socket opens
 - Pairing tokens persisted per TV; Wake-on-LAN power-on; REST power-state poll
+- Haptic tick on every button press (subtle ~15ms); per-TV "Haptic feedback"
+  switch in Settings (TV edit dialog), default on — off keeps visual pressed
+  states but disables vibration
 
 ## Protocol notes
 

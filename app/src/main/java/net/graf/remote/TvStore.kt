@@ -20,7 +20,8 @@ data class Tv(
     var host: String,
     var token: String = "",
     var tokenSupport: Boolean = false,
-    var wifiMac: String = ""
+    var wifiMac: String = "",
+    var haptic: Boolean = true
 )
 
 data class AppButton(val id: String, var label: String, var appId: String)
@@ -43,7 +44,8 @@ class TvStore(ctx: Context) {
                     host = o.optString("host", ""),
                     token = o.optString("token", ""),
                     tokenSupport = o.optBoolean("tokenSupport", false),
-                    wifiMac = o.optString("wifiMac", "")
+                    wifiMac = o.optString("wifiMac", ""),
+                    haptic = o.optBoolean("haptic", true)
                 )
             )
         }
@@ -61,6 +63,7 @@ class TvStore(ctx: Context) {
                     .put("token", t.token)
                     .put("tokenSupport", t.tokenSupport)
                     .put("wifiMac", t.wifiMac)
+                    .put("haptic", t.haptic)
             )
         }
         prefs.edit().putString("tvs", arr.toString()).apply()
@@ -85,6 +88,10 @@ class TvStore(ctx: Context) {
     }
 
     fun lastTvId(): String? = prefs.getString("lastTv", null)
+
+    /** Per-TV haptic toggle (default ON for TVs stored before this field). */
+    fun isHapticEnabled(tvId: String): Boolean =
+        loadTvs().firstOrNull { it.id == tvId }?.haptic ?: true
 
     fun setLastTvId(id: String) {
         prefs.edit().putString("lastTv", id).apply()
