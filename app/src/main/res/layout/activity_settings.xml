@@ -73,7 +73,7 @@
                     android:includeFontPadding="false"
                     android:minWidth="0dp"
                     android:minHeight="48dp"
-                    android:text="Scan LAN"
+                    android:text="Scan"
                     android:textColor="#f2f2f2" />
             </LinearLayout>
 

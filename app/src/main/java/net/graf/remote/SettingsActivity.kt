@@ -35,12 +35,13 @@ class SettingsActivity : Activity() {
     private lateinit var appList: LinearLayout
     private var appQueryConn: TvConnection? = null
 
-    /** Round-27 drag state: id + row height captured at drag start, plus the
-     * visible placeholder marking the would-be insertion point. */
+    /** Round-29 drag state: id + row height captured at drag start, the
+     * hidden original row, plus the visible placeholder marking the
+     * would-be insertion point. */
     private var draggedAppId: String? = null
     private var draggedRowHeight: Int = 0
+    private var draggedRow: View? = null
     private var dragPlaceholder: View? = null
-    private var dragInsertIndex: Int = -1
 
     /** ViewHolder for catalog browser rows (row.tag). See showCatalogBrowser. */
     private data class CatalogRow(
@@ -82,15 +83,7 @@ class SettingsActivity : Activity() {
         if (tvs.isEmpty()) tvList.addView(hint("No TVs yet — add one by IP or scan."))
         for (tv in tvs) {
             val sub = if (tv.haptic) tv.host else "${tv.host} · haptics off"
-            tvList.addView(row(
-                "${tv.nick}\n$sub",
-                onEdit = { tvDialog(tv) },
-                onDelete = {
-                    val all = store.loadTvs().filter { it.id != tv.id }
-                    store.saveTvs(all)
-                    render()
-                }
-            ))
+            tvList.addView(row("${tv.nick}\n$sub", onEdit = { tvDialog(tv) }))
         }
         appList.removeAllViews()
         val apps = store.loadApps()
@@ -100,7 +93,12 @@ class SettingsActivity : Activity() {
         }
     }
 
-    private fun row(text: String, onEdit: () -> Unit, onDelete: () -> Unit): LinearLayout {
+    /**
+     * TV row (round 29): label + Edit glyph ONLY (Delete moved into the TV
+     * edit dialog, same pattern as the app rows). TV rows stay
+     * non-draggable.
+     */
+    private fun row(text: String, onEdit: () -> Unit): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
@@ -110,51 +108,37 @@ class SettingsActivity : Activity() {
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            val edit = TextView(context).apply {
-                this.text = "✎"
-                textSize = 22f
-                gravity = android.view.Gravity.CENTER
-                contentDescription = "Edit"
-                setTextColor(0xFFF2F2F2.toInt())
-                setBackgroundColor(0x00000000)
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                setOnClickListener { onEdit() }
-            }
-            val del = Button(context).apply {
-                this.text = "Del"
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER
-                isAllCaps = false
-                includeFontPadding = false
-                minWidth = 0
-                minimumWidth = 0
-                setBackgroundResource(R.drawable.btn_face_selector)
-                setTextColor(0xFFF2F2F2.toInt())
-                elevation = dp(1).toFloat()
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(40)
-                ).apply { marginStart = dp(8) }
-                setOnClickListener { onDelete() }
-            }
             addView(label)
-            addView(edit)
-            addView(del)
+            addView(editGlyph(onEdit))
             setPadding(dp(4), dp(6), dp(4), dp(6))
         }
     }
 
     /**
-     * App-button row (round 27): handle + label + Edit ONLY (Delete moved
-     * into the edit dialog). The handle starts a drag-and-drop reorder with
-     * a placeholder gap: while dragging, a visible placeholder marks the
-     * would-be insertion point (before/after each row by pointer half), and
-     * release drops exactly there — symmetric in both directions. TV rows
-     * stay non-draggable.
+     * Round 29: flat Material "edit" pencil (ic_edit) shared by TV and app
+     * rows — plain, matching the simplicity of the other glyphs.
+     */
+    private fun editGlyph(onEdit: () -> Unit): ImageView {
+        return ImageView(this).apply {
+            setImageResource(R.drawable.ic_edit)
+            contentDescription = "Edit"
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            setOnClickListener { onEdit() }
+        }
+    }
+
+    /**
+     * App-button row (round 29): handle + label + Edit glyph ONLY (Delete
+     * lives in the edit dialog). The handle starts a drag-and-drop reorder
+     * with a placeholder gap: the original row hides (INVISIBLE, keeping
+     * its slot) while its shadow is dragged, and a single centralized
+     * hover path on the container snaps the placeholder above/below the
+     * hovered row by pointer half — symmetric in both directions, first
+     * position reachable. TV rows stay non-draggable.
      */
     private fun appRow(app: AppButton): LinearLayout {
         val sub = if (app.launchIds().size > 1) {
@@ -183,30 +167,17 @@ class SettingsActivity : Activity() {
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            val edit = TextView(context).apply {
-                this.text = "✎"
-                textSize = 22f
-                gravity = android.view.Gravity.CENTER
-                contentDescription = "Edit"
-                setTextColor(0xFFF2F2F2.toInt())
-                setBackgroundColor(0x00000000)
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                setOnClickListener { appDialog(app) }
-            }
+            val edit = editGlyph { appDialog(app) }
             addView(handle)
             addView(label)
             addView(edit)
             setPadding(dp(4), dp(6), dp(4), dp(6))
             tag = app.id
-            setOnDragListener(appDropListener(app.id))
             handle.setOnTouchListener { v, ev ->
                 if (ev.action == MotionEvent.ACTION_DOWN) {
                     draggedAppId = app.id
                     draggedRowHeight = row.height
+                    draggedRow = row
                     // Touch point relative to the ROW (handle sits at its
                     // left), so the shadow originates at the handle.
                     val tx = (handle.left + ev.x).toInt()
@@ -214,6 +185,11 @@ class SettingsActivity : Activity() {
                     val shadowView = buildAppRowShadow(app, sub, row)
                     val data = ClipData.newPlainText("app-button", app.id)
                     v.startDragAndDrop(data, AppRowShadow(shadowView, tx, ty), app.id, 0)
+                    // Round 29: hide the original row (INVISIBLE keeps its
+                    // layout slot) while its shadow is dragged — the
+                    // placeholder alone models the future slot, so the
+                    // visible list never grows by an extra row.
+                    row.visibility = View.INVISIBLE
                     true
                 } else {
                     false
@@ -290,9 +266,9 @@ class SettingsActivity : Activity() {
                 topMargin = dp(2)
                 bottomMargin = dp(2)
             }
-            // Round 28: the placeholder must NEVER act as a hover target —
+            // Round 29: the placeholder must NEVER act as a hover target —
             // it consumes drag events in place (DROP still commits) so
-            // hovering it can't relocate it and thrash every frame.
+            // hovering it is a no-op and can't relocate it and thrash.
             setOnDragListener(View.OnDragListener { _, event ->
                 when (event.action) {
                     DragEvent.ACTION_DRAG_STARTED ->
@@ -316,37 +292,74 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Round 28: placeholder hit-test exclusion — coordinates are relative
-     * to appList (the container receiving the event); the placeholder is a
-     * direct child so its left/top/right/bottom are in the same space.
+     * Round 29: centralized hover hit-test (coordinates relative to
+     * appList, the container receiving the event). Every touch maps to
+     * exactly one app row over its FULL bounds — rows are laid out flush,
+     * so there are no dead zones and the placeholder can never thrash to
+     * the bottom. The hidden original row is still a valid hover target
+     * (its INVISIBLE slot is a future position), which is what makes the
+     * first position reachable. Touch over the placeholder itself (margins
+     * included) is a no-op.
      */
-    private fun isOverPlaceholder(x: Float, y: Float): Boolean {
-        val ph = dragPlaceholder ?: return false
-        if (ph.parent !== appList) return false
-        return x >= ph.left && x <= ph.right && y >= ph.top && y <= ph.bottom
+    private fun handleHover(y: Float) {
+        if (draggedAppId == null) return
+        val ph = dragPlaceholder
+        if (ph != null && ph.parent === appList) {
+            val lp = ph.layoutParams as? LinearLayout.LayoutParams
+            val top = ph.top - (lp?.topMargin ?: 0)
+            val bottom = ph.bottom + (lp?.bottomMargin ?: 0)
+            if (y >= top && y <= bottom) return
+        }
+        var target: View? = null
+        var above = true
+        for (i in 0 until appList.childCount) {
+            val c = appList.getChildAt(i)
+            if (c === ph || c.tag !is String) continue
+            if (y >= c.top && y <= c.bottom) {
+                target = c
+                above = y < c.top + c.height / 2f
+                break
+            }
+        }
+        if (target == null) {
+            // Margin gap or past the ends: nearest app row wins. Below
+            // the last row snaps after it (append); above the first row
+            // snaps before it (new row 1).
+            var best: View? = null
+            var bestDist = Float.MAX_VALUE
+            for (i in 0 until appList.childCount) {
+                val c = appList.getChildAt(i)
+                if (c === ph || c.tag !is String) continue
+                val d = if (y < c.top) (c.top - y).toFloat() else (y - c.bottom).toFloat()
+                if (d < bestDist) {
+                    bestDist = d
+                    best = c
+                }
+            }
+            if (best == null) return
+            target = best
+            above = y < best.top
+        }
+        movePlaceholder(target, above)
     }
 
-    private fun placePlaceholderBefore(target: View) {
+    /**
+     * Round 29: placeholder snapping — above the hovered row when the
+     * touch is on its top 50%, below it on the bottom 50%. The target
+     * index is computed in placeholder-excluded space, so re-hovering the
+     * slot the placeholder already models is a no-op instead of a
+     * remove+re-add layout thump.
+     */
+    private fun movePlaceholder(target: View, above: Boolean) {
         val ph = ensurePlaceholder()
+        val current = appList.indexOfChild(ph)
+        var idx = appList.indexOfChild(target)
+        if (idx < 0) return
+        if (current >= 0 && idx > current) idx--
+        if (!above) idx++
+        if (idx == current) return // already there: no-op
         (ph.parent as? ViewGroup)?.removeView(ph)
-        val idx = appList.indexOfChild(target)
-        if (idx >= 0) appList.addView(ph, idx) else appList.addView(ph)
-        dragInsertIndex = appList.indexOfChild(ph)
-    }
-
-    private fun placePlaceholderAfter(target: View) {
-        val ph = ensurePlaceholder()
-        (ph.parent as? ViewGroup)?.removeView(ph)
-        val idx = appList.indexOfChild(target)
-        if (idx >= 0) appList.addView(ph, idx + 1) else appList.addView(ph)
-        dragInsertIndex = appList.indexOfChild(ph)
-    }
-
-    private fun placePlaceholderAtEnd() {
-        val ph = ensurePlaceholder()
-        (ph.parent as? ViewGroup)?.removeView(ph)
-        appList.addView(ph)
-        dragInsertIndex = appList.indexOfChild(ph)
+        appList.addView(ph, idx.coerceIn(0, appList.childCount))
     }
 
     /** Insertion index = non-dragged rows strictly before the placeholder. */
@@ -364,14 +377,24 @@ class SettingsActivity : Activity() {
     private fun clearDragState() {
         dragPlaceholder?.let { (it.parent as? ViewGroup)?.removeView(it) }
         dragPlaceholder = null
-        dragInsertIndex = -1
         draggedAppId = null
         draggedRowHeight = 0
+        // Round 29: un-hide the original row (commitDrop() re-renders
+        // right after, so this only matters for cancelled drags).
+        draggedRow?.visibility = View.VISIBLE
+        draggedRow = null
     }
 
     private fun commitDrop(): Boolean {
         val draggedId = draggedAppId ?: return false
-        val at = placeholderInsertIndex().takeIf { it >= 0 } ?: -1
+        val ph = dragPlaceholder
+        if (ph == null || ph.parent !== appList) {
+            // Dropped without ever hovering a slot: order unchanged.
+            clearDragState()
+            render()
+            return true
+        }
+        val at = placeholderInsertIndex()
         val all = store.loadApps()
         val dragged = all.firstOrNull { it.id == draggedId }
         if (dragged == null) {
@@ -379,63 +402,27 @@ class SettingsActivity : Activity() {
             return false
         }
         all.removeAll { it.id == draggedId }
-        if (at < 0) all.add(dragged) else all.add(at.coerceIn(0, all.size), dragged)
+        all.add(at.coerceIn(0, all.size), dragged)
         store.saveApps(all)
         clearDragState()
         render()
         return true
     }
 
-    private fun appDropListener(targetId: String): View.OnDragListener {
-        return View.OnDragListener { v, event ->
-            when (event.action) {
-                DragEvent.ACTION_DRAG_STARTED ->
-                    event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
-                DragEvent.ACTION_DRAG_ENTERED -> {
-                    v.setBackgroundColor(0x33FFFFFF)
-                    if (draggedAppId != null && targetId != draggedAppId) {
-                        if (event.y < v.height / 2f) placePlaceholderBefore(v)
-                        else placePlaceholderAfter(v)
-                    }
-                    true
-                }
-                DragEvent.ACTION_DRAG_LOCATION -> {
-                    if (draggedAppId != null && targetId != draggedAppId) {
-                        if (event.y < v.height / 2f) placePlaceholderBefore(v)
-                        else placePlaceholderAfter(v)
-                    }
-                    true
-                }
-                DragEvent.ACTION_DRAG_EXITED -> {
-                    v.setBackgroundColor(0x00000000)
-                    true
-                }
-                DragEvent.ACTION_DROP -> {
-                    v.setBackgroundColor(0x00000000)
-                    commitDrop()
-                    true
-                }
-                DragEvent.ACTION_DRAG_ENDED -> {
-                    v.setBackgroundColor(0x00000000)
-                    clearDragState()
-                    true
-                }
-                else -> true
-            }
-        }
-    }
-
+    /**
+     * Round 29: the container is the ONLY hover target — rows carry no
+     * drag listeners of their own. Every ENTERED/LOCATION hit-tests by
+     * coordinates (handleHover), so the full row bounds are covered with
+     * no dead zones; gaps and the past-the-last-row area resolve to the
+     * nearest row instead of thrashing the placeholder to the bottom.
+     */
     private fun appListDropListener(): View.OnDragListener {
         return View.OnDragListener { _, event ->
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED ->
                     event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
                 DragEvent.ACTION_DRAG_ENTERED, DragEvent.ACTION_DRAG_LOCATION -> {
-                    // Round 28: the placeholder is never a hover target —
-                    // hovering it leaves it exactly where it is.
-                    if (draggedAppId != null && !isOverPlaceholder(event.x, event.y)) {
-                        placePlaceholderAtEnd()
-                    }
+                    if (draggedAppId != null) handleHover(event.y)
                     true
                 }
                 DragEvent.ACTION_DROP -> {
@@ -453,6 +440,12 @@ class SettingsActivity : Activity() {
 
     private fun hint(text: String) = TextView(this).apply { this.text = text }
 
+    /**
+     * Add/edit TV dialog (round 29): same fields + Save/Cancel behavior as
+     * before; TV rows show Edit only now, so Delete lives here — a red
+     * text button on the left of the dialog's actions row (edit mode
+     * only), same pattern as the app rows.
+     */
     private fun tvDialog(existing: Tv?) {
         val nick = EditText(this).apply {
             hint = "Nickname (e.g. Living Room)"
@@ -473,15 +466,69 @@ class SettingsActivity : Activity() {
             addView(host)
             addView(haptic)
         }
-        AlertDialog.Builder(this)
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, dp(12), 0, 0)
+        }
+        val dialog = AlertDialog.Builder(this)
             .setTitle(if (existing == null) "Add TV" else "Edit TV")
             .setView(layout)
-            .setPositiveButton("Save") { _, _ ->
+            .create()
+        if (existing == null) {
+            actions.addView(View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        } else {
+            actions.addView(Button(this).apply {
+                text = "Delete"
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                isAllCaps = false
+                includeFontPadding = false
+                minWidth = 0
+                minimumWidth = 0
+                setBackgroundColor(0x00000000)
+                setTextColor(0xFFFF453A.toInt())
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                setOnClickListener {
+                    store.saveTvs(store.loadTvs().filter { it.id != existing.id })
+                    render()
+                    dialog.dismiss()
+                }
+            })
+            actions.addView(View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        }
+        actions.addView(Button(this).apply {
+            text = "Cancel"
+            textSize = 14f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setBackgroundColor(0x00000000)
+            setTextColor(0xFFF2F2F2.toInt())
+            setOnClickListener { dialog.dismiss() }
+        })
+        actions.addView(Button(this).apply {
+            text = "Save"
+            textSize = 14f
+            isAllCaps = false
+            includeFontPadding = false
+            minWidth = 0
+            minimumWidth = 0
+            setBackgroundColor(0x00000000)
+            setTextColor(0xFFF2F2F2.toInt())
+            setOnClickListener {
                 val n = nick.text.toString().trim()
                 val h = host.text.toString().trim()
                 if (n.isEmpty() || h.isEmpty()) {
                     toast("Nickname and IP are both required")
-                    return@setPositiveButton
+                    return@setOnClickListener
                 }
                 val all = store.loadTvs()
                 val hapticOn = haptic.isChecked
@@ -496,9 +543,11 @@ class SettingsActivity : Activity() {
                 }
                 store.saveTvs(all)
                 render()
+                dialog.dismiss()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        })
+        layout.addView(actions)
+        dialog.show()
     }
 
     /**
@@ -803,6 +852,7 @@ class SettingsActivity : Activity() {
      * Add/edit app-button dialog (round 27): same fields + Save/Cancel
      * behavior as before; rows show Edit only, so Delete lives here — a red
      * text button on the left of the dialog's actions row (edit mode only).
+     * Round 29: the window wraps to its contents (never full-height).
      */
     private fun appDialog(existing: AppButton?) {
         val label = EditText(this).apply {
@@ -911,6 +961,11 @@ class SettingsActivity : Activity() {
         })
         layout.addView(actions)
         dialog.show()
+        // Round 29: fit/wrap to contents — never stretch full height.
+        dialog.window?.setLayout(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
     }
 
     private fun scan() {
@@ -924,7 +979,7 @@ class SettingsActivity : Activity() {
             }
             runOnUiThread {
                 btn.isEnabled = true
-                btn.text = "Scan LAN"
+                btn.text = "Scan"
                 if (result.noWifi) {
                     toast("Connect to Wi-Fi first — the scan needs the local network")
                     return@runOnUiThread
