@@ -258,11 +258,10 @@ class MainActivity : Activity(), TvConnection.Listener {
     }
 
     private fun tileLp(): LinearLayout.LayoutParams {
-        // Round 27: tiles shrink slightly for breathing room — 87dp face
-        // with 9dp side margins keeps the same per-tile footprint
-        // (87+18 = 97+8) so section height does NOT grow (it shrinks).
+        // Round 28: equal margin on all sides — 9dp side margins minus 2dp
+        // = 7dp, with vertical set to match.
         val s = dp(87)
-        return LinearLayout.LayoutParams(s, s).apply { setMargins(dp(9), 0, dp(9), 0) }
+        return LinearLayout.LayoutParams(s, s).apply { setMargins(dp(7), dp(7), dp(7), dp(7)) }
     }
 
     /**

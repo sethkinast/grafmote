@@ -110,20 +110,17 @@ class SettingsActivity : Activity() {
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            val edit = Button(context).apply {
-                this.text = "Edit"
-                textSize = 14f
+            val edit = TextView(context).apply {
+                this.text = "✎"
+                textSize = 22f
                 gravity = android.view.Gravity.CENTER
-                isAllCaps = false
-                includeFontPadding = false
-                minWidth = 0
-                minimumWidth = 0
-                setBackgroundResource(R.drawable.btn_face_selector)
+                contentDescription = "Edit"
                 setTextColor(0xFFF2F2F2.toInt())
-                elevation = dp(1).toFloat()
+                setBackgroundColor(0x00000000)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(40)
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 )
                 setOnClickListener { onEdit() }
             }
@@ -186,20 +183,17 @@ class SettingsActivity : Activity() {
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            val edit = Button(context).apply {
-                this.text = "Edit"
-                textSize = 14f
+            val edit = TextView(context).apply {
+                this.text = "✎"
+                textSize = 22f
                 gravity = android.view.Gravity.CENTER
-                isAllCaps = false
-                includeFontPadding = false
-                minWidth = 0
-                minimumWidth = 0
-                setBackgroundResource(R.drawable.btn_face_selector)
+                contentDescription = "Edit"
                 setTextColor(0xFFF2F2F2.toInt())
-                elevation = dp(1).toFloat()
+                setBackgroundColor(0x00000000)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(40)
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 )
                 setOnClickListener { appDialog(app) }
             }
@@ -296,9 +290,40 @@ class SettingsActivity : Activity() {
                 topMargin = dp(2)
                 bottomMargin = dp(2)
             }
+            // Round 28: the placeholder must NEVER act as a hover target —
+            // it consumes drag events in place (DROP still commits) so
+            // hovering it can't relocate it and thrash every frame.
+            setOnDragListener(View.OnDragListener { _, event ->
+                when (event.action) {
+                    DragEvent.ACTION_DRAG_STARTED ->
+                        event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                    DragEvent.ACTION_DRAG_ENTERED, DragEvent.ACTION_DRAG_LOCATION,
+                    DragEvent.ACTION_DRAG_EXITED -> true
+                    DragEvent.ACTION_DROP -> {
+                        commitDrop()
+                        true
+                    }
+                    DragEvent.ACTION_DRAG_ENDED -> {
+                        clearDragState()
+                        true
+                    }
+                    else -> true
+                }
+            })
         }
         dragPlaceholder = v
         return v
+    }
+
+    /**
+     * Round 28: placeholder hit-test exclusion — coordinates are relative
+     * to appList (the container receiving the event); the placeholder is a
+     * direct child so its left/top/right/bottom are in the same space.
+     */
+    private fun isOverPlaceholder(x: Float, y: Float): Boolean {
+        val ph = dragPlaceholder ?: return false
+        if (ph.parent !== appList) return false
+        return x >= ph.left && x <= ph.right && y >= ph.top && y <= ph.bottom
     }
 
     private fun placePlaceholderBefore(target: View) {
@@ -406,7 +431,11 @@ class SettingsActivity : Activity() {
                 DragEvent.ACTION_DRAG_STARTED ->
                     event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
                 DragEvent.ACTION_DRAG_ENTERED, DragEvent.ACTION_DRAG_LOCATION -> {
-                    if (draggedAppId != null) placePlaceholderAtEnd()
+                    // Round 28: the placeholder is never a hover target —
+                    // hovering it leaves it exactly where it is.
+                    if (draggedAppId != null && !isOverPlaceholder(event.x, event.y)) {
+                        placePlaceholderAtEnd()
+                    }
                     true
                 }
                 DragEvent.ACTION_DROP -> {
@@ -500,6 +529,50 @@ class SettingsActivity : Activity() {
         val target = store.lastTvId()?.let { id -> tvs.firstOrNull { it.id == id } }
             ?: tvs.first()
 
+        // Round 28: never scan when the TV is offline — a quick REST probe
+        // decides; offline goes straight to the catalog with an offline
+        // notice, no WebSocket query is ever kicked off.
+        val checking = AlertDialog.Builder(this)
+            .setTitle("Add apps")
+            .setMessage("Checking ${target.nick}…")
+            .setCancelable(false)
+            .create()
+        checking.show()
+        thread {
+            val reachable = isTvReachable(target.host)
+            runOnUiThread {
+                try {
+                    checking.dismiss()
+                } catch (_: Exception) {
+                }
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (!reachable) {
+                    showCatalogBrowser("${target.nick} is offline. ")
+                    return@runOnUiThread
+                }
+                queryTvApps(target)
+            }
+        }
+    }
+
+    /** Round 28: lightweight offline probe — plain REST GET, short timeouts. */
+    private fun isTvReachable(host: String): Boolean {
+        var conn: java.net.HttpURLConnection? = null
+        return try {
+            conn = java.net.URL("http://$host:8001/api/v2/").openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 2500
+            conn.readTimeout = 2500
+            conn.connect()
+            conn.responseCode in 200..499
+        } catch (_: Exception) {
+            false
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    /** Round 28: the online half of addAppFlow — WebSocket installed-app query. */
+    private fun queryTvApps(target: Tv) {
         val loading = AlertDialog.Builder(this)
             .setTitle("Add apps")
             .setMessage("Loading apps from ${target.nick}…")
@@ -768,20 +841,25 @@ class SettingsActivity : Activity() {
             actions.addView(Button(this).apply {
                 text = "Delete"
                 textSize = 14f
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
                 isAllCaps = false
                 includeFontPadding = false
                 minWidth = 0
                 minimumWidth = 0
                 setBackgroundColor(0x00000000)
                 setTextColor(0xFFFF453A.toInt())
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    gravity = android.view.Gravity.START
-                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
                 setOnClickListener {
                     store.saveApps(store.loadApps().filter { it.id != existing.id })
                     render()
                     dialog.dismiss()
                 }
+            })
+            actions.addView(View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
         }
         actions.addView(Button(this).apply {
@@ -798,11 +876,11 @@ class SettingsActivity : Activity() {
             text = "Save"
             textSize = 14f
             isAllCaps = false
+            includeFontPadding = false
             minWidth = 0
             minimumWidth = 0
-            setBackgroundResource(R.drawable.btn_face_selector)
+            setBackgroundColor(0x00000000)
             setTextColor(0xFFF2F2F2.toInt())
-            elevation = dp(1).toFloat()
             setOnClickListener {
                 val l = label.text.toString().trim()
                 val a = appId.text.toString().trim()
