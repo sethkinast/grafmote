@@ -97,7 +97,8 @@ class TvConnection(private val store: TvStore) {
     private var generation = 0
     /** Bumped to cancel the WoL aggressive-reconnect loop (TV switch/close). */
     private var wolGen = 0
-    private val pending = ArrayDeque<String>()
+    private data class QueuedFrame(val frame: String, val enqueuedAtMs: Long)
+    private val pending = ArrayDeque<QueuedFrame>()
     private var sawConnectEvent = false
 
     /** Installed-app entry from the ed.installedApp.get WebSocket answer. */
@@ -175,10 +176,10 @@ class TvConnection(private val store: TvStore) {
             }
             if (sent) return
             // Direct send failed (half-open socket): queue + reconnect now.
-            pending.add(frame)
+            enqueuePendingLocked(frame)
             reconnectNowLocked(tv)
         } else {
-            pending.add(frame)
+            enqueuePendingLocked(frame)
             // A live socket awaiting the on-TV Allow/Deny prompt must not be
             // torn down — the queue flushes on ms.channel.connect.
             if (connState == State.WAITING_APPROVAL && socket != null) return
@@ -480,11 +481,11 @@ class TvConnection(private val store: TvStore) {
                 sent = false
             }
             if (!sent) {
-                pending.add(frame)
+                enqueuePendingLocked(frame)
                 reconnectNowLocked(tv)
             }
         } else {
-            pending.add(frame)
+            enqueuePendingLocked(frame)
             // A live socket awaiting the on-TV Allow/Deny prompt must not be
             // torn down — the queue flushes on ms.channel.connect.
             if (connState == State.WAITING_APPROVAL && socket != null) return
@@ -555,6 +556,32 @@ class TvConnection(private val store: TvStore) {
         else -> "unknown"
     }
 
+    /**
+     * Bounded command queue (round 31): at most MAX_PENDING frames are kept;
+     * on overflow the OLDEST is dropped so the newest taps survive. Each
+     * entry carries its enqueue time so the flush can discard stale taps.
+     * Runs on exec (send paths) — matches existing pending usage.
+     */
+    private fun enqueuePendingLocked(frame: String) {
+        pending.add(QueuedFrame(frame, System.currentTimeMillis()))
+        while (pending.size > MAX_PENDING) pending.removeFirst()
+    }
+
+    /**
+     * Drain the queue — ONLY called after the ms.channel.connect handshake
+     * completes (round 31). Entries older than PENDING_TTL_MS are discarded
+     * without sending: the TTL covers the foreground-reconnect window and
+     * WoL boot without letting ancient taps fire after a long outage.
+     */
+    private fun flushPendingLocked(ws: WebSocket) {
+        val now = System.currentTimeMillis()
+        while (pending.isNotEmpty()) {
+            val entry = pending.removeFirst()
+            if (now - entry.enqueuedAtMs > PENDING_TTL_MS) continue
+            if (!ws.send(entry.frame)) break
+        }
+    }
+
     /** Silent auto-reconnect after a dropped socket; stale generations no-op. */
     private fun scheduleReconnect(tv: Tv) {
         val gen = generation
@@ -590,10 +617,12 @@ class TvConnection(private val store: TvStore) {
                 if (socket === ws) socket = null
                 return
             }
-            // Flush anything tapped while connecting (optimistic UI).
-            while (pending.isNotEmpty()) {
-                if (!ws.send(pending.removeFirst())) break
-            }
+            // Round 31: do NOT flush here. The TV requires the app-level
+            // ms.channel.connect handshake before accepting ms.remote.control
+            // frames; flushing at TCP/WebSocket open delivers frames the TV
+            // ignores, so queued taps would go out too early and die. The
+            // queue drains only in the ms.channel.connect handler below
+            // (which also covers the WAITING_APPROVAL path).
             if (tv.token.isNotEmpty() || sawConnectEvent) {
                 setState(tv, State.OPEN, "Connected to ${tv.nick}")
             } else {
@@ -629,10 +658,10 @@ class TvConnection(private val store: TvStore) {
                     sawConnectEvent = true
                     connState = State.OPEN
                     setState(tv, State.OPEN, "Connected to ${tv.nick}")
-                    // Flush anything queued while waiting for approval.
-                    while (pending.isNotEmpty()) {
-                        if (!ws.send(pending.removeFirst())) break
-                    }
+                    // Flush anything queued while connecting / waiting for
+                    // approval — now that ms.channel.connect completed the TV
+                    // accepts remote frames. Stale entries (>10s) are dropped.
+                    flushPendingLocked(ws)
                 }
             } catch (_: Exception) {
             }
@@ -734,5 +763,9 @@ class TvConnection(private val store: TvStore) {
 
     companion object {
         private const val TAG = "TvConnection"
+        /** Bound on the queued-command queue (round 31, Seth's choice — tight). */
+        private const val MAX_PENDING = 4
+        /** Stale queued taps older than this never fire (round 31). */
+        private const val PENDING_TTL_MS = 10_000L
     }
 }
