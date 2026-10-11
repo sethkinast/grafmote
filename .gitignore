@@ -2,6 +2,9 @@
 *.jks
 *.keystore
 *.p12
+# Exception: pinned DEBUG keystore (standard android/android credentials,
+# not secret) so CI debug APKs share one signature and install as updates.
+!app/debug.keystore
 
 # Gradle
 .gradle/

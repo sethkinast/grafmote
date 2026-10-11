@@ -16,6 +16,16 @@ android {
     }
 
     signingConfigs {
+        // Pinned DEBUG keystore committed at app/debug.keystore so every
+        // CI debug APK shares one signature and installs as an update.
+        // Standard debug credentials (android/android) — not secret.
+        // NEVER commit release key material; release stays env-only.
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
         // Release signing reads ONLY from environment variables so no key
         // material ever lands in the repo. CI decodes the KEYSTORE_BASE64
         // secret into a temp file and passes its path via KEYSTORE_PATH;
@@ -39,6 +49,7 @@ android {
             minifyEnabled false
         }
         debug {
+            signingConfig signingConfigs.debug
         }
     }
 

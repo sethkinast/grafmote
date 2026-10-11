@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Full-bleed solid background for the adaptive launcher icon.
+     Dark tone matching the app theme (windowBackground #141414).
+     The shape fills the entire 108dp viewport; the launcher masks it. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#14161F" />
+</shape>

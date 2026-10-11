@@ -72,9 +72,19 @@ SDK build-tools are x86-64-only and cannot run on ARM Linux).
 Sideload the debug APK. `INTERNET` permission is required for LAN sockets;
 `usesCleartextTraffic` is required because the Samsung LAN API is plain HTTP.
 
+Debug APKs are signed with a pinned keystore committed at
+`app/debug.keystore` (standard `android`/`android` debug credentials — not
+secret), so consecutive CI builds install as updates. ONE final
+uninstall/reinstall is required the first time after this change: installs
+made before it carry ephemeral CI signatures that Android refuses to update
+over. After that one reinstall, updates work normally. (Switching to release
+signing later is another one-time reinstall — see below.)
+
 ## Release signing
 
-No key material is committed to the repo, ever. `app/build.gradle` reads the
+No release key material is committed to the repo, ever (the only exception
+is the pinned debug keystore above, which uses public standard credentials).
+`app/build.gradle` reads the
 release signing config ONLY from environment variables, and CI decodes the
 keystore from a secret at build time.
 
