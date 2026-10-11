@@ -121,6 +121,46 @@ class TvStore(ctx: Context) {
         prefs.edit().putString("lastTv", id).apply()
     }
 
+    // ---- Per-TV winning app-ID memory (round 22) ----
+    //
+    // Round 21 launches try every fallback ID until one answers HTTP 200,
+    // but a 2021 TV and a 2024 TV can need different IDs for the same app.
+    // So the ID that last worked is remembered PER (TV, button): tvId ->
+    // (appButtonId -> winning Samsung appId), persisted as one JSON string
+    // alongside the other prefs. Winners are overwritten on every success,
+    // so a stale winner simply falls through to the fallbacks and the new
+    // winner replaces it.
+
+    fun getWinningAppId(tvId: String, buttonId: String): String? {
+        if (tvId.isBlank() || buttonId.isBlank()) return null
+        return try {
+            val root = JSONObject(prefs.getString("app_winners", "{}"))
+            root.optJSONObject(tvId)?.optString(buttonId, "").orEmpty()
+                .trim().ifEmpty { null }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun setWinningAppId(tvId: String, buttonId: String, samsungId: String) {
+        if (tvId.isBlank() || buttonId.isBlank() || samsungId.isBlank()) return
+        try {
+            val root = try {
+                JSONObject(prefs.getString("app_winners", "{}"))
+            } catch (_: Exception) {
+                JSONObject()
+            }
+            var perTv = root.optJSONObject(tvId)
+            if (perTv == null) {
+                perTv = JSONObject()
+                root.put(tvId, perTv)
+            }
+            perTv.put(buttonId, samsungId)
+            prefs.edit().putString("app_winners", root.toString()).apply()
+        } catch (_: Exception) {
+        }
+    }
+
     // ---- App-launch buttons (global list, v1) ----
 
     fun loadApps(): MutableList<AppButton> {

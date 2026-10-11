@@ -224,7 +224,7 @@ class MainActivity : Activity(), TvConnection.Listener {
                 return@launch
             }
             tile.isEnabled = false
-            conn.launchApp(tv, app.launchIds()) { ok ->
+            conn.launchApp(tv, app.id, app.launchIds()) { ok ->
                 tile.isEnabled = true
                 if (!ok) toast("Launch failed — is ${tv.nick} on?")
             }

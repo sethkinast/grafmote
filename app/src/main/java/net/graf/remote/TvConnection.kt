@@ -353,6 +353,44 @@ class TvConnection(private val store: TvStore) {
         }
     }
 
+    /**
+     * Per-TV winning-ID launch (round 22): button B on TV T tries its
+     * recorded winner for (T, B) FIRST, then B's remaining IDs in catalog
+     * order (skipping the already-tried winner). Whatever answers HTTP 200
+     * is recorded as the new winner for (T, B), overwriting any previous
+     * one — so a stale winner falls through to the fallbacks and the
+     * replacement sticks. No-winner buttons behave exactly like the
+     * winner-less overload above.
+     */
+    fun launchApp(tv: Tv, buttonId: String, appIds: List<String>, cb: ((ok: Boolean) -> Unit)? = null) {
+        val base = appIds.filter { it.isNotBlank() }.distinct()
+        val winner = try {
+            store.getWinningAppId(tv.id, buttonId)?.trim().orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        val ordered = if (winner.isNotEmpty()) {
+            listOf(winner) + base.filter { it != winner }
+        } else {
+            base
+        }
+        exec.execute {
+            var ok = false
+            for (id in ordered) {
+                if (postLaunch(tv, id)) {
+                    ok = true
+                    try {
+                        store.setWinningAppId(tv.id, buttonId, id)
+                    } catch (_: Exception) {
+                    }
+                    break
+                }
+            }
+            val r = ok
+            main.post { cb?.invoke(r) }
+        }
+    }
+
     private fun postLaunch(tv: Tv, appId: String): Boolean {
         var conn: HttpURLConnection? = null
         return try {
