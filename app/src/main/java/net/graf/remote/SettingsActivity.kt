@@ -29,6 +29,13 @@ class SettingsActivity : Activity() {
     private lateinit var appList: LinearLayout
     private var appQueryConn: TvConnection? = null
 
+    /** ViewHolder for catalog browser rows (row.tag). See showCatalogBrowser. */
+    private data class CatalogRow(
+        val check: CheckBox,
+        val logo: ImageView,
+        val name: TextView
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -343,39 +350,50 @@ class SettingsActivity : Activity() {
             override fun getCount(): Int = visible.size
             override fun getItem(pos: Int): Any = visible[pos]
             override fun getItemId(pos: Int): Long = pos.toLong()
+            // ViewHolder cached in row.tag: IconLoader tracks its URL via a
+            // keyed tag and never touches the plain tag, so recycled rows
+            // always resolve their views (previously findViewWithTag("logo")
+            // returned null after loadInto overwrote the "logo" tag).
             override fun getView(pos: Int, convertView: View?, parent: ViewGroup?): View {
                 val app = visible[pos]
-                val row = (convertView as? LinearLayout) ?: LinearLayout(this@SettingsActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(4), dp(6), dp(4), dp(6))
-                    addView(CheckBox(context).apply {
-                        isFocusable = false
-                        isClickable = false
-                        tag = "check"
-                    })
-                    addView(ImageView(context).apply {
-                        tag = "logo"
-                        scaleType = ImageView.ScaleType.FIT_CENTER
-                        layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-                            marginStart = dp(8)
-                            marginEnd = dp(8)
-                        }
-                    })
-                    addView(TextView(context).apply {
-                        tag = "name"
-                        textSize = 16f
-                        layoutParams = LinearLayout.LayoutParams(
-                            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-                        )
-                    })
+                val row: LinearLayout
+                val holder: CatalogRow
+                if (convertView is LinearLayout && convertView.tag is CatalogRow) {
+                    row = convertView
+                    holder = row.tag as CatalogRow
+                } else {
+                    row = LinearLayout(this@SettingsActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(4), dp(6), dp(4), dp(6))
+                        addView(CheckBox(context).apply {
+                            isFocusable = false
+                            isClickable = false
+                        })
+                        addView(ImageView(context).apply {
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                                marginStart = dp(8)
+                                marginEnd = dp(8)
+                            }
+                        })
+                        addView(TextView(context).apply {
+                            textSize = 16f
+                            layoutParams = LinearLayout.LayoutParams(
+                                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                            )
+                        })
+                    }
+                    holder = CatalogRow(
+                        row.getChildAt(0) as CheckBox,
+                        row.getChildAt(1) as ImageView,
+                        row.getChildAt(2) as TextView
+                    )
+                    row.tag = holder
                 }
-                val check = row.findViewWithTag<CheckBox>("check")
-                val logo = row.findViewWithTag<ImageView>("logo")
-                val name = row.findViewWithTag<TextView>("name")
-                check.isChecked = selected.contains(app.primaryId)
-                name.text = app.name
-                IconLoader.loadInto(logo, app.icon)
+                holder.check.isChecked = selected.contains(app.primaryId)
+                holder.name.text = app.name
+                IconLoader.loadInto(holder.logo, app.icon)
                 return row
             }
         }
