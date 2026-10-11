@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Round 14 polish: header (LED + selector + gear + power), ONE seamless
-     plus-shaped D-pad (strokeless layer-list cross face + transparent arrow
+<!-- Round 15 polish: unified top bar (raised selector pill on the left +
+     recessed inset icon panel on the right), ONE seamless plus-shaped
+     D-pad (strokeless layer-list cross face + transparent arrow
      touch zones, OK seated in the center with its circular border, Back at
      7 o'clock / Home at 4 o'clock) at pre-round-13 proportions, compact
      rocker row (single-pill VOL / CH backgrounds with transparent +/-
@@ -10,56 +11,94 @@
      and the app tiles (spacer view), never above the D-pad. App tiles
      center when they fit, scroll from the left on overflow (fillViewport +
      match_parent/gravity). All depth comes from diagonal-gradient shape
-     drawables (light from the top-right, angle=45) plus subtle 1dp
-     elevation. No image assets except vectors. -->
+     drawables (light from the top-right, angle=45; the icon well runs the
+     reverse angle for an inset feel) plus subtle 1dp elevation on raised
+     faces only. No image assets except vectors. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="12dp">
 
-    <!-- Header: status LED dot + TV selector + gear + power -->
+    <!-- Header: ONE unified top bar — raised TV selector pill (LED dot +
+         TV name + chevron in a single contained pill) on the left, recessed
+         inset icon panel (gear + power baked into a darker well) on the
+         right. IDs and view types are unchanged (statusDot View, tvSpinner
+         Spinner, btnSettings/btnPower ImageButton) so wiring is untouched. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <View
-            android:id="@+id/statusDot"
-            android:layout_width="12dp"
-            android:layout_height="12dp"
-            android:layout_marginEnd="8dp"
-            android:background="@drawable/status_dot"
-            android:contentDescription="Connection status" />
-
-        <Spinner
-            android:id="@+id/tvSpinner"
+        <!-- Raised selector pill: single tappable-looking unit. -->
+        <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-
-        <ImageButton
-            android:id="@+id/btnSettings"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginStart="4dp"
-            android:background="@drawable/btn_circle_selector"
-            android:contentDescription="Setup"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:background="@drawable/topbar_selector_pill"
             android:elevation="1dp"
-            android:scaleType="center"
-            android:src="@drawable/ic_settings" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <ImageButton
-            android:id="@+id/btnPower"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
+            <View
+                android:id="@+id/statusDot"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/status_dot"
+                android:contentDescription="Connection status" />
+
+            <Spinner
+                android:id="@+id/tvSpinner"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@android:color/transparent" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="16dp"
+                android:clickable="false"
+                android:focusable="false"
+                android:text="▾"
+                android:textColor="#f2f2f2"
+                android:textSize="18sp" />
+        </LinearLayout>
+
+        <!-- Recessed inset icon panel: darker well behind the two icons. -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
             android:layout_marginStart="8dp"
-            android:background="@drawable/btn_circle_selector"
-            android:contentDescription="Power"
-            android:elevation="1dp"
-            android:scaleType="center"
-            android:src="@drawable/ic_power" />
+            android:background="@drawable/topbar_inset_panel"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp">
+
+            <ImageButton
+                android:id="@+id/btnSettings"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/btn_touch_ripple"
+                android:contentDescription="Setup"
+                android:scaleType="center"
+                android:src="@drawable/ic_settings" />
+
+            <ImageButton
+                android:id="@+id/btnPower"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/btn_touch_ripple"
+                android:contentDescription="Power"
+                android:scaleType="center"
+                android:src="@drawable/ic_power" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- D-pad: ONE seamless plus at pre-round-13 proportions. The cross face
