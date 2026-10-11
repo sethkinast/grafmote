@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Round 11 polish: header (LED + selector + gear + power), ONE connected
-      plus-shaped D-pad (layer-list cross face + transparent arrow touch
-      zones, OK seated in the center, Back at 7 o'clock / Home at 4 o'clock),
-      compact rocker row (single-pill VOL / CH backgrounds with transparent
-      +/- touch halves, narrow as a D-pad arm), small round utility buttons
-      all at ONE diameter (52dp), square app tiles at ONE size (88dp, set in
-      code), inset rule instead of an "Apps" header. All depth comes from
-      diagonal-gradient shape drawables (light from the top-right, angle=45)
-      plus subtle 1dp elevation. No image assets except vectors. -->
+<!-- Round 14 polish: header (LED + selector + gear + power), ONE seamless
+     plus-shaped D-pad (strokeless layer-list cross face + transparent arrow
+     touch zones, OK seated in the center with its circular border, Back at
+     7 o'clock / Home at 4 o'clock) at pre-round-13 proportions, compact
+     rocker row (single-pill VOL / CH backgrounds with transparent +/-
+     touch halves), small round utility buttons all at ONE diameter (52dp),
+     square app tiles at ONE size (88dp, set in code), inset rule instead of
+     an "Apps" header. Leftover vertical space sits between the rocker row
+     and the app tiles (spacer view), never above the D-pad. App tiles
+     center when they fit, scroll from the left on overflow (fillViewport +
+     match_parent/gravity). All depth comes from diagonal-gradient shape
+     drawables (light from the top-right, angle=45) plus subtle 1dp
+     elevation. No image assets except vectors. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -58,17 +62,19 @@
             android:src="@drawable/ic_power" />
     </LinearLayout>
 
-    <!-- D-pad: ONE connected plus. The cross face is a single layer-list
-         background; the four arrows are transparent touch zones over its
-         arms (zero gap, zero seam) and the round OK button sits in the
-         center covering the bar intersection. Back (7 o'clock) and Home
-         (4 o'clock) are small round buttons tucked below the cross. This
-         section takes all leftover vertical space so the rows sit closer
-         together on tall screens instead of leaving a dead band. -->
+    <!-- D-pad: ONE seamless plus at pre-round-13 proportions. The cross face
+         is a single strokeless layer-list background (no internal divider
+         lines); the four arrows are transparent touch zones over its arms
+         (zero gap, zero seam) and the round OK button sits in the center
+         keeping its circular border. Back (7 o'clock) and Home (4 o'clock)
+         are small round buttons tucked below the cross. wrap_content + top
+         margin: the cluster sits just below the top bar so the top of the
+         screen feels full; leftover space lives in the spacer below the
+         rockers. -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
         android:gravity="center"
         android:orientation="vertical">
 
@@ -319,6 +325,14 @@
         </FrameLayout>
     </LinearLayout>
 
+    <!-- Spacer: any leftover vertical space lives HERE, between the rocker
+         row and the app-tiles section — never above the D-pad, so the top
+         of the screen (below the top bar) stays full. -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
     <!-- Inset horizontal rule separating the remote from the app tiles -->
     <View
         android:layout_width="match_parent"
@@ -329,14 +343,20 @@
         android:layout_marginBottom="6dp"
         android:background="#2E2E33" />
 
+    <!-- App tiles: centered when they fit, left-scrolling on overflow.
+         fillViewport forces the row to at least the viewport width;
+         match_parent + center gravity centers a short row, while a wide
+         row simply grows past the viewport and scrolls from the left. -->
     <HorizontalScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:fillViewport="true">
 
         <LinearLayout
             android:id="@+id/appsRow"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
             android:orientation="horizontal"
             android:paddingTop="4dp"
             android:paddingBottom="4dp" />
