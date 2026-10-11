@@ -126,7 +126,7 @@ class SettingsActivity : Activity() {
 
     /**
      * TV row (round 30): two-line typography — name at 16sp, IP/host line
-     * 2sp smaller in light gray — plus Edit glyph ONLY. TV rows stay
+     * at 12sp in #808080 gray — plus Edit glyph ONLY. TV rows stay
      * non-draggable.
      */
     private fun tvRow(name: String, sub: String, onEdit: () -> Unit): LinearLayout {
@@ -145,8 +145,8 @@ class SettingsActivity : Activity() {
                 })
                 addView(TextView(context).apply {
                     text = sub
-                    textSize = 14f
-                    setTextColor(0xFFAAAAAA.toInt())
+                    textSize = 12f
+                    setTextColor(0xFF808080.toInt())
                     gravity = android.view.Gravity.CENTER_VERTICAL
                 })
             }
@@ -182,7 +182,7 @@ class SettingsActivity : Activity() {
     /**
      * App-button row (round 30): the WHOLE row is the drag handle — no
      * handle glyph (rows aren't tappable, so no gesture conflict). Label is
-     * two-line typography (name 16sp, app ID 14sp light gray) + Edit glyph
+     * two-line typography (name 16sp, app ID 12sp #808080 gray) + Edit glyph
      * ONLY (Delete lives in the edit dialog). The row starts a
      * drag-and-drop reorder with a placeholder gap: the original row is GONE
      * (no layout gap) while its shadow is dragged, and a single centralized
@@ -212,8 +212,8 @@ class SettingsActivity : Activity() {
                 })
                 addView(TextView(context).apply {
                     text = sub
-                    textSize = 14f
-                    setTextColor(0xFFAAAAAA.toInt())
+                    textSize = 12f
+                    setTextColor(0xFF808080.toInt())
                     gravity = android.view.Gravity.CENTER_VERTICAL
                 })
             }
@@ -306,8 +306,8 @@ class SettingsActivity : Activity() {
                 })
                 addView(TextView(context).apply {
                     text = sub
-                    textSize = 14f
-                    setTextColor(0xFFAAAAAA.toInt())
+                    textSize = 12f
+                    setTextColor(0xFF808080.toInt())
                 })
             })
         }
@@ -339,18 +339,29 @@ class SettingsActivity : Activity() {
         }
     }
 
+    /**
+     * Round 36: the placeholder's TOTAL vertical footprint (view height +
+     * top/bottom margins) is EXACTLY the dragged row's measured height, so
+     * inserting or moving it causes zero layout shift in subsequent rows.
+     * The 2dp top/bottom margins are subtracted from the view height to
+     * compensate — height + margins == row height, padding included.
+     */
     private fun ensurePlaceholder(): View {
         dragPlaceholder?.let { return it }
-        val h = if (draggedRowHeight > 0) draggedRowHeight else dp(52)
+        val total = if (draggedRowHeight > 0) draggedRowHeight else dp(52)
+        val marginTop = dp(2)
+        val marginBottom = dp(2)
+        val h = (total - marginTop - marginBottom).coerceAtLeast(0)
         val v = View(this).apply {
             setBackgroundColor(0x33FFFFFF)
+            minimumHeight = h
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, h
             ).apply {
                 leftMargin = dp(4)
                 rightMargin = dp(4)
-                topMargin = dp(2)
-                bottomMargin = dp(2)
+                topMargin = marginTop
+                bottomMargin = marginBottom
             }
             // Round 29: the placeholder must NEVER act as a hover target —
             // it consumes drag events in place (DROP still commits) so
