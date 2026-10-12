@@ -1,4 +1,4 @@
-package net.graf.remote
+package net.cogdev.grafmote
 
 import android.content.Context
 import android.graphics.Bitmap

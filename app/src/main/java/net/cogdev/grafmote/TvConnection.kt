@@ -1,4 +1,4 @@
-package net.graf.remote
+package net.cogdev.grafmote
 
 import android.os.Handler
 import android.os.Looper
@@ -630,7 +630,7 @@ class TvConnection(private val store: TvStore) {
         // stay queued until ms.channel.connect (see onOpen/onMessage).
         sawConnectEvent = false
         setState(tv, State.CONNECTING, "Connecting to ${tv.nick}")
-        val name = Base64.encodeToString("GrafRemote".toByteArray(), Base64.NO_WRAP)
+        val name = Base64.encodeToString("Grafmote".toByteArray(), Base64.NO_WRAP)
         val url = if (tv.tokenSupport) {
             "wss://${tv.host}:8002/api/v2/channels/samsung.remote.control?name=$name&token=${tv.token}"
         } else {
@@ -672,7 +672,7 @@ class TvConnection(private val store: TvStore) {
                         if (slot == activeTvId && ws === socket && !sawConnectEvent && tv.token.isEmpty()) {
                             setState(
                                 tv, State.WAITING_APPROVAL,
-                                "Approve \"GrafRemote\" on the TV, then tap again"
+                                "Approve \"Grafmote\" on the TV, then tap again"
                             )
                         }
                     },
@@ -704,7 +704,7 @@ class TvConnection(private val store: TvStore) {
                     sawConnectEvent = false
                     setState(
                         tv, State.WAITING_APPROVAL,
-                        "Approve \"GrafRemote\" on the TV, then tap again"
+                        "Approve \"Grafmote\" on the TV, then tap again"
                     )
                     return
                 }
@@ -712,7 +712,7 @@ class TvConnection(private val store: TvStore) {
                     sawConnectEvent = false
                     setState(
                         tv, State.WAITING_APPROVAL,
-                        "Approve \"GrafRemote\" on the TV, then tap again"
+                        "Approve \"Grafmote\" on the TV, then tap again"
                     )
                     return
                 }
@@ -747,7 +747,7 @@ class TvConnection(private val store: TvStore) {
             if (!retriedFallback && slot == activeTvId && ws === socket) {
                 retriedFallback = true
                 try {
-                    val name = Base64.encodeToString("GrafRemote".toByteArray(), Base64.NO_WRAP)
+                    val name = Base64.encodeToString("Grafmote".toByteArray(), Base64.NO_WRAP)
                     val fallback = if (tv.tokenSupport) {
                         "ws://${tv.host}:8001/api/v2/channels/samsung.remote.control?name=$name"
                     } else {
@@ -787,7 +787,7 @@ class TvConnection(private val store: TvStore) {
             } else {
                 setState(
                     tv, State.WAITING_APPROVAL,
-                    "Approve \"GrafRemote\" on the TV, then tap again"
+                    "Approve \"Grafmote\" on the TV, then tap again"
                 )
             }
         }

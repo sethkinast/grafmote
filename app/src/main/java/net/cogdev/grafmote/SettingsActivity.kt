@@ -1,4 +1,4 @@
-package net.graf.remote
+package net.cogdev.grafmote
 
 import android.app.Activity
 import android.app.AlertDialog

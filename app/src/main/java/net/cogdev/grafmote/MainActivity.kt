@@ -1,4 +1,4 @@
-package net.graf.remote
+package net.cogdev.grafmote
 
 import android.app.Activity
 import android.content.Intent
@@ -395,7 +395,7 @@ class MainActivity : Activity(), TvConnection.Listener {
         if (state != was) {
             when (state) {
                 TvConnection.State.WAITING_APPROVAL ->
-                    toast(connDetail.ifBlank { "Approve \"GrafRemote\" on the TV, then tap again" })
+                    toast(connDetail.ifBlank { "Approve \"Grafmote\" on the TV, then tap again" })
                 TvConnection.State.UNREACHABLE ->
                     toast(connDetail.ifBlank { "TV may be off — Power still sends WoL" })
                 else -> {}
