@@ -168,12 +168,34 @@ class MainActivity : Activity(), TvConnection.Listener {
         // changed (first start, TV added/removed/reselected in settings).
         val last = store.lastTvId()?.let { id -> tvs.firstOrNull { it.id == id } }
         val target = last ?: tvs.firstOrNull()
+        if (target != null) {
+            // Cold-start sync (round 41): buildSpinner() ran while current
+            // was still null, so the spinner sits at position 0. Pin it to
+            // the resolved target now; lastSpinnerPos silences the async
+            // setSelection callback via the existing check.
+            val pos = tvs.indexOfFirst { it.id == target.id }.takeIf { it >= 0 }
+            if (pos != null) {
+                spinnerGuard = true
+                tvSpinner.setSelection(pos)
+                lastSpinnerPos = tvSpinner.selectedItemPosition
+                spinnerGuard = false
+            }
+        }
         if (target == null) {
             switchTo(null, force = true)
         } else if (target.id != current?.id) {
             switchTo(target, force = true)
         } else {
-            conn.foregroundCheck(target)
+            // Same-TV foregrounding: adopt the fresh object so Settings
+            // edits (new host) take effect; a host change forces a
+            // reconnect so the socket moves to the new IP immediately.
+            val oldHost = current?.host
+            current = target
+            if (oldHost != target.host) {
+                conn.selectTv(target)
+            } else {
+                conn.foregroundCheck(target)
+            }
             conn.refreshInfo(target) { p -> power = p }
         }
         ui.post(poller)
