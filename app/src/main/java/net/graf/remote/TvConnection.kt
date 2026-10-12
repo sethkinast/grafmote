@@ -64,6 +64,15 @@ class TvConnection(private val store: TvStore) {
     var listener: Listener? = null
 
     private val exec = Executors.newSingleThreadScheduledExecutor()
+    /**
+     * Round 41: REST/HTTP work (refreshInfo's GETs, launchApp's POSTs, the
+     * installed-app query setup) runs here — NEVER on [exec]. refreshInfo
+     * costs up to ~16s (4s+4s timeouts x2 attempts) while the TV is off and
+     * would otherwise stall the single command thread behind the 15s poller,
+     * delaying Power/WoL/key taps queued behind it. [exec] stays for
+     * commands/socket state only; socket-touching halves hop back to [exec].
+     */
+    private val netExec = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
     // NOTE (TLS): token-supporting TVs serve a SELF-SIGNED cert on :8002 with no
@@ -98,8 +107,13 @@ class TvConnection(private val store: TvStore) {
     /** Bumped to cancel the WoL aggressive-reconnect loop (TV switch/close). */
     private var wolGen = 0
     private data class QueuedFrame(val frame: String, val enqueuedAtMs: Long)
+    /**
+     * Round 41: touched on [exec] (enqueue/clear) AND on OkHttp's reader
+     * thread (onMessage -> flush) — every access holds synchronized(pending).
+     */
     private val pending = ArrayDeque<QueuedFrame>()
-    private var sawConnectEvent = false
+    /** Written on OkHttp's thread, read on exec — must be volatile. */
+    @Volatile private var sawConnectEvent = false
 
     /** Installed-app entry from the ed.installedApp.get WebSocket answer. */
     data class AppInfo(val appId: String, val name: String)
@@ -119,7 +133,7 @@ class TvConnection(private val store: TvStore) {
             } catch (_: Exception) {
             }
             socket = null
-            pending.clear()
+            synchronized(pending) { pending.clear() }
             sawConnectEvent = false
             activeTvId = tv?.id
             if (tv == null) {
@@ -220,7 +234,7 @@ class TvConnection(private val store: TvStore) {
                 } catch (_: Exception) {
                 }
                 socket = null
-                pending.clear()
+                synchronized(pending) { pending.clear() }
                 sawConnectEvent = false
                 activeTvId = tv.id
                 connectLocked(tv)
@@ -293,7 +307,8 @@ class TvConnection(private val store: TvStore) {
 
     /** Fetch REST device info; updates stored tokenSupport/wifiMac; reports power. */
     fun refreshInfo(tv: Tv, cb: ((power: String) -> Unit)? = null) {
-        exec.execute {
+        // Round 41: REST on netExec — never the single command thread.
+        netExec.execute {
             var power = "unknown"
             var raw = ""
             var fetched = false
@@ -341,7 +356,8 @@ class TvConnection(private val store: TvStore) {
      */
     fun launchApp(tv: Tv, appIds: List<String>, cb: ((ok: Boolean) -> Unit)? = null) {
         val ordered = appIds.filter { it.isNotBlank() }.distinct()
-        exec.execute {
+        // Round 41: blocking POSTs on netExec — never the command thread.
+        netExec.execute {
             var ok = false
             for (id in ordered) {
                 if (postLaunch(tv, id)) {
@@ -375,7 +391,8 @@ class TvConnection(private val store: TvStore) {
         } else {
             base
         }
-        exec.execute {
+        // Round 41: blocking POSTs on netExec — never the command thread.
+        netExec.execute {
             var ok = false
             for (id in ordered) {
                 if (postLaunch(tv, id)) {
@@ -428,9 +445,14 @@ class TvConnection(private val store: TvStore) {
      * the emit when down, and flushes it on open/connect like key frames.
      */
     fun queryInstalledApps(tv: Tv, timeoutMs: Long = 10000, cb: (List<AppInfo>?) -> Unit) {
-        exec.execute { queryInstalledAppsLocked(tv, timeoutMs, cb) }
+        // Round 41: setup on netExec — the socket-touching half hops to exec.
+        netExec.execute { queryInstalledAppsLocked(tv, timeoutMs, cb) }
     }
 
+    /**
+     * Setup runs on netExec (round 41); the socket send half hops to exec
+     * via [sendEmitLocked] so all socket/generation state stays single-threaded.
+     */
     private fun queryInstalledAppsLocked(tv: Tv, timeoutMs: Long, cb: (List<AppInfo>?) -> Unit) {
         synchronized(this) {
             installedAppsCb?.let { prev ->
@@ -452,6 +474,20 @@ class TvConnection(private val store: TvStore) {
             installedAppsTimeout = timeout
             main.postDelayed(timeout, timeoutMs)
         }
+        val frame = JSONObject()
+            .put("method", "ms.channel.emit")
+            .put(
+                "params",
+                JSONObject()
+                    .put("event", "ed.installedApp.get")
+                    .put("to", "host")
+            )
+            .toString()
+        exec.execute { sendEmitLocked(tv, frame) }
+    }
+
+    /** Socket half of the installed-app query; runs on exec. */
+    private fun sendEmitLocked(tv: Tv, frame: String) {
         if (activeTvId != tv.id) {
             activeTvId = tv.id
             generation++
@@ -463,15 +499,6 @@ class TvConnection(private val store: TvStore) {
             socket = null
             connectLocked(tv)
         }
-        val frame = JSONObject()
-            .put("method", "ms.channel.emit")
-            .put(
-                "params",
-                JSONObject()
-                    .put("event", "ed.installedApp.get")
-                    .put("to", "host")
-            )
-            .toString()
         val ws = socket
         if (ws != null && connState == State.OPEN) {
             var sent = false
@@ -537,7 +564,7 @@ class TvConnection(private val store: TvStore) {
             } catch (_: Exception) {
             }
             socket = null
-            pending.clear()
+            synchronized(pending) { pending.clear() }
         }
     }
 
@@ -563,8 +590,10 @@ class TvConnection(private val store: TvStore) {
      * Runs on exec (send paths) — matches existing pending usage.
      */
     private fun enqueuePendingLocked(frame: String) {
-        pending.add(QueuedFrame(frame, System.currentTimeMillis()))
-        while (pending.size > MAX_PENDING) pending.removeFirst()
+        synchronized(pending) {
+            pending.add(QueuedFrame(frame, System.currentTimeMillis()))
+            while (pending.size > MAX_PENDING) pending.removeFirst()
+        }
     }
 
     /**
@@ -572,13 +601,17 @@ class TvConnection(private val store: TvStore) {
      * completes (round 31). Entries older than PENDING_TTL_MS are discarded
      * without sending: the TTL covers the foreground-reconnect window and
      * WoL boot without letting ancient taps fire after a long outage.
+     * Called on OkHttp's thread (from onMessage) as well as exec — holds
+     * the pending lock across the drain.
      */
     private fun flushPendingLocked(ws: WebSocket) {
-        val now = System.currentTimeMillis()
-        while (pending.isNotEmpty()) {
-            val entry = pending.removeFirst()
-            if (now - entry.enqueuedAtMs > PENDING_TTL_MS) continue
-            if (!ws.send(entry.frame)) break
+        synchronized(pending) {
+            val now = System.currentTimeMillis()
+            while (pending.isNotEmpty()) {
+                val entry = pending.removeFirst()
+                if (now - entry.enqueuedAtMs > PENDING_TTL_MS) continue
+                if (!ws.send(entry.frame)) break
+            }
         }
     }
 
@@ -593,6 +626,9 @@ class TvConnection(private val store: TvStore) {
     }
 
     private fun connectLocked(tv: Tv) {
+        // Round 41: every attempt starts with no handshake seen — direct sends
+        // stay queued until ms.channel.connect (see onOpen/onMessage).
+        sawConnectEvent = false
         setState(tv, State.CONNECTING, "Connecting to ${tv.nick}")
         val name = Base64.encodeToString("GrafRemote".toByteArray(), Base64.NO_WRAP)
         val url = if (tv.tokenSupport) {
@@ -600,37 +636,40 @@ class TvConnection(private val store: TvStore) {
         } else {
             "ws://${tv.host}:8001/api/v2/channels/samsung.remote.control?name=$name"
         }
-        // First-run fallback: tokenSupport is only known after a successful REST
-        // fetch (TV must be ON). If the secure socket fails and we never confirmed
-        // tokenSupport, retry once over plain ws before giving up.
+        // TLS fallback (round 41): tokenSupport is only known after a
+        // successful REST fetch (TV must be ON). A confirmed-tokenSupport TV
+        // tries wss/:8002 first and falls back to plain ws/:8001 on failure;
+        // an unconfirmed TV (tokenSupport=false default) tries plain ws/:8001
+        // first and falls back to wss/:8002 on failure (see onFailure).
+        // Either direction retries at most once.
         val slot = tv.id
         val listener = TvSocket(tv, slot)
         socket = wsClient.newWebSocket(Request.Builder().url(url).build(), listener)
     }
 
     private inner class TvSocket(val tv: Tv, val slot: String) : WebSocketListener() {
-        private var retriedPlain = false
+        private var retriedFallback = false
 
         override fun onOpen(ws: WebSocket, response: Response) {
-            if (slot != activeTvId) {
-                ws.close(1000, "stale")
-                if (socket === ws) socket = null
+            if (slot != activeTvId || ws !== socket) {
+                try {
+                    ws.close(1000, "stale")
+                } catch (_: Exception) {
+                }
                 return
             }
-            // Round 31: do NOT flush here. The TV requires the app-level
-            // ms.channel.connect handshake before accepting ms.remote.control
-            // frames; flushing at TCP/WebSocket open delivers frames the TV
-            // ignores, so queued taps would go out too early and die. The
-            // queue drains only in the ms.channel.connect handler below
-            // (which also covers the WAITING_APPROVAL path).
-            if (tv.token.isNotEmpty() || sawConnectEvent) {
-                setState(tv, State.OPEN, "Connected to ${tv.nick}")
-            } else {
+            // Round 31/41: do NOT enter OPEN and do NOT flush here. The TV
+            // requires the app-level ms.channel.connect handshake before
+            // accepting ms.remote.control frames; entering OPEN at TCP open
+            // lets direct sends fire into the pre-handshake window where the
+            // TV ignores them. OPEN happens only in the ms.channel.connect
+            // handler below; until then frames stay queued.
+            if (tv.token.isEmpty() && !sawConnectEvent) {
                 // No token yet: either the TV is showing the Allow/Deny prompt
                 // or it will drop us. Give the connect event a moment.
                 main.postDelayed(
                     {
-                        if (slot == activeTvId && !sawConnectEvent && tv.token.isEmpty()) {
+                        if (slot == activeTvId && ws === socket && !sawConnectEvent && tv.token.isEmpty()) {
                             setState(
                                 tv, State.WAITING_APPROVAL,
                                 "Approve \"GrafRemote\" on the TV, then tap again"
@@ -640,13 +679,41 @@ class TvConnection(private val store: TvStore) {
                     3000
                 )
             }
+            // Token path: stay CONNECTING until ms.channel.connect arrives.
         }
 
         override fun onMessage(ws: WebSocket, text: String) {
+            if (slot != activeTvId || ws !== socket) return
             try {
                 val msg = JSONObject(text)
                 if (msg.optString("event") == "ed.installedApp.get") {
                     completeInstalledApps(parseInstalledAppsPayload(msg))
+                    return
+                }
+                val ev = msg.optString("event", "")
+                // Round 41: a revoked/expired token is rejected here, not at
+                // socket open. Clear it and park in WAITING_APPROVAL so the
+                // next connect re-prompts — never a tight reconnect loop
+                // (see onGone: no scheduleReconnect from this path).
+                if (ev.equals("ms.channel.unauthorized", ignoreCase = true)) {
+                    tv.token = ""
+                    try {
+                        store.updateToken(tv.id, "")
+                    } catch (_: Exception) {
+                    }
+                    sawConnectEvent = false
+                    setState(
+                        tv, State.WAITING_APPROVAL,
+                        "Approve \"GrafRemote\" on the TV, then tap again"
+                    )
+                    return
+                }
+                if (ev.equals("ms.channel.timeout", ignoreCase = true)) {
+                    sawConnectEvent = false
+                    setState(
+                        tv, State.WAITING_APPROVAL,
+                        "Approve \"GrafRemote\" on the TV, then tap again"
+                    )
                     return
                 }
                 if (msg.optString("event") == "ms.channel.connect") {
@@ -672,13 +739,22 @@ class TvConnection(private val store: TvStore) {
         }
 
         override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-            // Fallback for never-confirmed tokenSupport (see connectLocked).
-            if (!retriedPlain && tv.tokenSupport && slot == activeTvId) {
-                retriedPlain = true
+            // Bidirectional TLS fallback (round 41, see connectLocked):
+            // confirmed-tokenSupport TVs fall back wss -> plain ws, while
+            // unconfirmed TVs (tokenSupport=false default, first connect went
+            // plain ws/:8001) fall back plain ws -> wss/:8002. At most once,
+            // and only for the current socket.
+            if (!retriedFallback && slot == activeTvId && ws === socket) {
+                retriedFallback = true
                 try {
                     val name = Base64.encodeToString("GrafRemote".toByteArray(), Base64.NO_WRAP)
-                    val plain = "ws://${tv.host}:8001/api/v2/channels/samsung.remote.control?name=$name"
-                    socket = wsClient.newWebSocket(Request.Builder().url(plain).build(), this)
+                    val fallback = if (tv.tokenSupport) {
+                        "ws://${tv.host}:8001/api/v2/channels/samsung.remote.control?name=$name"
+                    } else {
+                        "wss://${tv.host}:8002/api/v2/channels/samsung.remote.control?name=$name&token=${tv.token}"
+                    }
+                    sawConnectEvent = false
+                    socket = wsClient.newWebSocket(Request.Builder().url(fallback).build(), this)
                     return
                 } catch (_: Exception) {
                 }
@@ -688,10 +764,11 @@ class TvConnection(private val store: TvStore) {
 
         private fun onGone(ws: WebSocket, detail: String) {
             if (slot != activeTvId) return
-            // Only clear if this callback belongs to the current socket, so a
-            // newer connection (e.g. the plain-ws retry above) is never dropped
-            // by a stale failure.
-            if (socket === ws) socket = null
+            // Round 41: a stale callback (closed/failure from a superseded
+            // socket) must never clobber a healthy new connection — no-op
+            // unless this is still the current socket.
+            if (ws !== socket) return
+            socket = null
             // Log the raw reason for debugging, but NEVER surface it: the UI
             // only ever sees friendly transient strings (see setState calls).
             Log.d(TAG, "socket gone for ${tv.host}: $detail")

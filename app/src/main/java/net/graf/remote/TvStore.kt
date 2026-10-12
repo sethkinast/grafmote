@@ -54,6 +54,16 @@ class TvStore(ctx: Context) {
     private val prefs: SharedPreferences =
         ctx.applicationContext.getSharedPreferences("graf_remote", Context.MODE_PRIVATE)
 
+    /**
+     * Serializes every whole-list TV write (round 41): updateToken/updateMeta
+     * run load-modify-save from background threads while Settings' saveTvs
+     * runs on the main thread — without a common lock a background save can
+     * land between Settings' load and save and be clobbered (or vice versa).
+     * All three hold [tvsLock] across their load-modify-save/save so the
+     * writes are atomic with respect to each other.
+     */
+    private val tvsLock = Any()
+
     // ---- TVs ----
 
     fun loadTvs(): MutableList<Tv> {
@@ -77,37 +87,69 @@ class TvStore(ctx: Context) {
     }
 
     fun saveTvs(tvs: List<Tv>) {
-        val arr = JSONArray()
-        for (t in tvs) {
-            arr.put(
-                JSONObject()
-                    .put("id", t.id)
-                    .put("nick", t.nick)
-                    .put("host", t.host)
-                    .put("token", t.token)
-                    .put("tokenSupport", t.tokenSupport)
-                    .put("wifiMac", t.wifiMac)
-                    .put("haptic", t.haptic)
-            )
+        synchronized(tvsLock) {
+            val arr = JSONArray()
+            for (t in tvs) {
+                arr.put(
+                    JSONObject()
+                        .put("id", t.id)
+                        .put("nick", t.nick)
+                        .put("host", t.host)
+                        .put("token", t.token)
+                        .put("tokenSupport", t.tokenSupport)
+                        .put("wifiMac", t.wifiMac)
+                        .put("haptic", t.haptic)
+                )
+            }
+            prefs.edit().putString("tvs", arr.toString()).apply()
         }
-        prefs.edit().putString("tvs", arr.toString()).apply()
     }
 
     fun updateToken(tvId: String, token: String) {
-        val tvs = loadTvs()
-        if (tvs.any { it.id == tvId && it.token != token }) {
-            tvs.first { it.id == tvId }.token = token
-            saveTvs(tvs)
+        synchronized(tvsLock) {
+            val tvs = loadTvs()
+            if (tvs.any { it.id == tvId && it.token != token }) {
+                tvs.first { it.id == tvId }.token = token
+                val arr = JSONArray()
+                for (t in tvs) {
+                    arr.put(
+                        JSONObject()
+                            .put("id", t.id)
+                            .put("nick", t.nick)
+                            .put("host", t.host)
+                            .put("token", t.token)
+                            .put("tokenSupport", t.tokenSupport)
+                            .put("wifiMac", t.wifiMac)
+                            .put("haptic", t.haptic)
+                    )
+                }
+                prefs.edit().putString("tvs", arr.toString()).apply()
+            }
         }
     }
 
     fun updateMeta(tvId: String, tokenSupport: Boolean, wifiMac: String) {
-        val tvs = loadTvs()
-        val tv = tvs.firstOrNull { it.id == tvId } ?: return
-        if (tv.tokenSupport != tokenSupport || tv.wifiMac != wifiMac) {
-            tv.tokenSupport = tokenSupport
-            tv.wifiMac = wifiMac
-            saveTvs(tvs)
+        synchronized(tvsLock) {
+            val tvs = loadTvs()
+            val tv = tvs.firstOrNull { it.id == tvId } ?: return
+            if (tv.tokenSupport != tokenSupport || tv.wifiMac != wifiMac) {
+                tv.tokenSupport = tokenSupport
+                tv.wifiMac = wifiMac
+                val arr = JSONArray()
+                for (t in tvs) {
+                    arr.put(
+                        JSONObject()
+                            .put("id", t.id)
+                            .put("nick", t.nick)
+                            .put("host", t.host)
+                            .put("token", t.token)
+                            .put("tokenSupport", t.tokenSupport)
+                            .put("wifiMac", t.wifiMac)
+                            .put("haptic", t.haptic)
+                    )
+                }
+                prefs.edit().putString("tvs", arr.toString()).apply()
+            }
         }
     }
 
