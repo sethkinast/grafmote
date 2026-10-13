@@ -229,8 +229,8 @@
         </RelativeLayout>
     </LinearLayout>
 
-    <!-- Bottom row: narrow volume pill | mute + play/pause | narrow channel
-         pill. Each rocker is ONE pill background with two touch halves —
+    <!-- Bottom row: narrow volume pill (mute centered in it) | play + pause
+         | narrow channel pill. Each rocker is ONE pill background with two touch halves —
          transparent at rest (no seam), darker half overlay + ripple while
          pressed. Doubled 40dp gap above this row separates it from the
          D-pad cluster; the weight-1 spacer below shrinks to compensate so
@@ -280,11 +280,28 @@
                     android:text="−"
                     android:textSize="33sp" />
             </LinearLayout>
+
+            <!-- Round 42: mute sits in the vertical center of the volume
+                 pill, D-pad-OK style — same 72dp circle construction as the
+                 OK button sitting in the cross. Drawn after the two halves
+                 so it sits on top; the + and - halves stay fully tappable
+                 above and below it. -->
+            <ImageButton
+                android:id="@+id/btnMute"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_gravity="center"
+                android:background="@drawable/btn_circle_selector"
+                android:contentDescription="Mute"
+                android:elevation="1dp"
+                android:scaleType="center"
+                android:src="@drawable/ic_mute" />
         </FrameLayout>
 
-        <!-- MIDDLE: mute + play/pause, same 72dp diameter as every other
-             small round utility button. Square-viewport vectors with
-             scaleType center so glyphs seat dead-center (mute is the ref). -->
+        <!-- MIDDLE: play + pause (round 42) — two separate buttons because
+             Samsung exposes separate KEY_PLAY and KEY_PAUSE keys and no
+             toggle. Same 72dp circle style and same 17dp spacing rhythm as
+             the old mute/play-pause pair; column still 231dp tall. -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="231dp"
@@ -294,25 +311,25 @@
             android:orientation="vertical">
 
             <ImageButton
-                android:id="@+id/btnMute"
+                android:id="@+id/btnPlay"
                 android:layout_width="72dp"
                 android:layout_height="72dp"
                 android:background="@drawable/btn_circle_selector"
-                android:contentDescription="Mute"
+                android:contentDescription="Play"
                 android:elevation="1dp"
                 android:scaleType="center"
-                android:src="@drawable/ic_mute" />
+                android:src="@drawable/ic_play" />
 
             <ImageButton
-                android:id="@+id/btnPlayPause"
+                android:id="@+id/btnPause"
                 android:layout_width="72dp"
                 android:layout_height="72dp"
                 android:layout_marginTop="17dp"
                 android:background="@drawable/btn_circle_selector"
-                android:contentDescription="Play/Pause"
+                android:contentDescription="Pause"
                 android:elevation="1dp"
                 android:scaleType="center"
-                android:src="@drawable/ic_playpause" />
+                android:src="@drawable/ic_pause" />
         </LinearLayout>
 
         <!-- RIGHT: single connected channel pill -->
