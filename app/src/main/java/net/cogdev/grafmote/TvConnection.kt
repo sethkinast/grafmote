@@ -114,6 +114,22 @@ class TvConnection(private val store: TvStore) {
     private val pending = ArrayDeque<QueuedFrame>()
     /** Written on OkHttp's thread, read on exec — must be volatile. */
     @Volatile private var sawConnectEvent = false
+    /**
+     * Round 42: consecutive ms.channel.unauthorized rejections with no
+     * successful ms.channel.connect in between. Strike 1 KEEPS the stored
+     * token (the rejection may be transient — retry with it); strike 2
+     * clears it as genuinely revoked so the next connect re-prompts for a
+     * fresh one. Incremented on OkHttp's reader thread, reset there on
+     * connect and on exec across TV switches — volatile like
+     * sawConnectEvent.
+     */
+    @Volatile private var authStrikes = 0
+    /**
+     * Round 42: false while the app is backgrounded (MainActivity forwards
+     * onResume/onPause via [setForeground]). scheduleReconnect never
+     * connects while backgrounded; user-initiated paths ignore the flag.
+     */
+    @Volatile private var foreground = true
 
     /** Installed-app entry from the ed.installedApp.get WebSocket answer. */
     data class AppInfo(val appId: String, val name: String)
@@ -122,6 +138,11 @@ class TvConnection(private val store: TvStore) {
     private var installedAppsTimeout: Runnable? = null
 
     fun currentState(): State = connState
+
+    /** Round 42: foreground flag — see [foreground]. Default true. */
+    fun setForeground(fg: Boolean) {
+        foreground = fg
+    }
 
     /** Switch the active TV: drop the old socket, connect to the new one. */
     fun selectTv(tv: Tv?) {
@@ -135,6 +156,7 @@ class TvConnection(private val store: TvStore) {
             socket = null
             synchronized(pending) { pending.clear() }
             sawConnectEvent = false
+            authStrikes = 0
             activeTvId = tv?.id
             if (tv == null) {
                 setState(null, State.IDLE, "No TV configured")
@@ -173,6 +195,7 @@ class TvConnection(private val store: TvStore) {
             activeTvId = tv.id
             generation++
             sawConnectEvent = false
+            authStrikes = 0
             try {
                 socket?.close(1000, "switch")
             } catch (_: Exception) {
@@ -225,6 +248,7 @@ class TvConnection(private val store: TvStore) {
      * error ever surfaces (see onGone/setState).
      */
     fun foregroundCheck(tv: Tv) {
+        Log.d(TAG, "token: foregroundCheck tokenPresent=${tv.token.isNotEmpty()} tokenLen=${tv.token.length}")
         exec.execute {
             if (tv.id != activeTvId) {
                 generation++
@@ -236,6 +260,7 @@ class TvConnection(private val store: TvStore) {
                 socket = null
                 synchronized(pending) { pending.clear() }
                 sawConnectEvent = false
+                authStrikes = 0
                 activeTvId = tv.id
                 connectLocked(tv)
                 return@execute
@@ -258,6 +283,7 @@ class TvConnection(private val store: TvStore) {
                 generation++
                 wolGen++
                 sawConnectEvent = false
+                authStrikes = 0
                 try {
                     socket?.close(1000, "switch")
                 } catch (_: Exception) {
@@ -492,6 +518,7 @@ class TvConnection(private val store: TvStore) {
             activeTvId = tv.id
             generation++
             sawConnectEvent = false
+            authStrikes = 0
             try {
                 socket?.close(1000, "switch")
             } catch (_: Exception) {
@@ -617,8 +644,13 @@ class TvConnection(private val store: TvStore) {
 
     /** Silent auto-reconnect after a dropped socket; stale generations no-op. */
     private fun scheduleReconnect(tv: Tv) {
+        // Round 42: never auto-reconnect while backgrounded — checked at
+        // schedule time AND at fire time. State stays IDLE; the next
+        // onResume's foregroundCheck performs the reconnect.
+        if (!foreground) return
         val gen = generation
         exec.schedule({
+            if (!foreground) return@schedule
             if (gen == generation && tv.id == activeTvId && socket == null) {
                 connectLocked(tv)
             }
@@ -636,6 +668,9 @@ class TvConnection(private val store: TvStore) {
         } else {
             "ws://${tv.host}:8001/api/v2/channels/samsung.remote.control?name=$name"
         }
+        // Round 42: token-lifecycle logging — presence/length only, NEVER
+        // the token value.
+        Log.d(TAG, "token: connect scheme=${if (tv.tokenSupport) "wss:8002" else "ws:8001"} tokenSupport=${tv.tokenSupport} tokenPresent=${tv.token.isNotEmpty()} tokenLen=${tv.token.length}")
         // TLS fallback (round 41): tokenSupport is only known after a
         // successful REST fetch (TV must be ON). A confirmed-tokenSupport TV
         // tries wss/:8002 first and falls back to plain ws/:8001 on failure;
@@ -691,15 +726,27 @@ class TvConnection(private val store: TvStore) {
                     return
                 }
                 val ev = msg.optString("event", "")
-                // Round 41: a revoked/expired token is rejected here, not at
-                // socket open. Clear it and park in WAITING_APPROVAL so the
-                // next connect re-prompts — never a tight reconnect loop
-                // (see onGone: no scheduleReconnect from this path).
+                // Round 42: TWO-STRIKE rule — a single rejection must not
+                // destroy a stored token (post-backgrounding rejections can
+                // be transient while the token is still valid). Strike 1
+                // keeps tv.token and the persisted token and parks in
+                // WAITING_APPROVAL; the next reconnect (foreground return or
+                // key tap, via the existing reconnect paths) retries WITH
+                // it. Strike 2 with no ms.channel.connect in between means
+                // genuinely revoked: clear it so the next connect goes out
+                // with no token and the TV's prompt flow issues a fresh one.
+                // No automatic reconnect here — retries happen on
+                // foreground/key-tap (see onGone's strike guard).
                 if (ev.equals("ms.channel.unauthorized", ignoreCase = true)) {
-                    tv.token = ""
-                    try {
-                        store.updateToken(tv.id, "")
-                    } catch (_: Exception) {
+                    authStrikes++
+                    Log.d(TAG, "token: ms.channel.unauthorized tokenPresent=${tv.token.isNotEmpty()} tokenLen=${tv.token.length} strikes=$authStrikes")
+                    if (authStrikes >= 2) {
+                        tv.token = ""
+                        try {
+                            store.updateToken(tv.id, "")
+                        } catch (_: Exception) {
+                        }
+                        Log.d(TAG, "token: token cleared tokenPresent=false tokenLen=0")
                     }
                     sawConnectEvent = false
                     setState(
@@ -709,6 +756,9 @@ class TvConnection(private val store: TvStore) {
                     return
                 }
                 if (ev.equals("ms.channel.timeout", ignoreCase = true)) {
+                    // Round 42: a timeout is NOT an auth rejection — never a
+                    // strike, never clears the token.
+                    Log.d(TAG, "token: ms.channel.timeout tokenPresent=${tv.token.isNotEmpty()} tokenLen=${tv.token.length}")
                     sawConnectEvent = false
                     setState(
                         tv, State.WAITING_APPROVAL,
@@ -718,9 +768,13 @@ class TvConnection(private val store: TvStore) {
                 }
                 if (msg.optString("event") == "ms.channel.connect") {
                     val token = msg.optJSONObject("data")?.optString("token", "") ?: ""
+                    Log.d(TAG, "token: ms.channel.connect receivedPresent=${token.isNotEmpty()} receivedLen=${token.length} differsFromStored=${token.isNotEmpty() && token != tv.token}")
+                    // Round 42: any successful connect resets the strike count.
+                    authStrikes = 0
                     if (token.isNotEmpty() && token != tv.token) {
                         tv.token = token
                         store.updateToken(tv.id, token)
+                        Log.d(TAG, "token: token saved tokenPresent=true tokenLen=${token.length}")
                     }
                     sawConnectEvent = true
                     connState = State.OPEN
@@ -769,6 +823,19 @@ class TvConnection(private val store: TvStore) {
             // unless this is still the current socket.
             if (ws !== socket) return
             socket = null
+            // Round 42: a socket death while an unauthorized strike is
+            // outstanding must NOT schedule an immediate automatic
+            // reconnect — park in WAITING_APPROVAL (socket already nulled,
+            // so the next foreground return or key tap retries via the
+            // existing reconnect paths). Bounded, not a tight loop: strike
+            // 2 clears the token, ending the cycle.
+            if (authStrikes > 0) {
+                setState(
+                    tv, State.WAITING_APPROVAL,
+                    "Approve \"Grafmote\" on the TV, then tap again"
+                )
+                return
+            }
             // Log the raw reason for debugging, but NEVER surface it: the UI
             // only ever sees friendly transient strings (see setState calls).
             Log.d(TAG, "socket gone for ${tv.host}: $detail")

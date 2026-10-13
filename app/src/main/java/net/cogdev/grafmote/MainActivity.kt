@@ -101,10 +101,12 @@ class MainActivity : Activity(), TvConnection.Listener {
         key(R.id.btnVolDown, "VOLDOWN")
         key(R.id.btnChUp, "CHUP")
         key(R.id.btnChDown, "CHDOWN")
-        // Round 40: PAUSE (wire KEY_PAUSE) is the play/pause toggle — the
-        // reference key list has KEY_PAUSE and no KEY_PLAYPAUSE, and the
-        // physical remote's play/pause button sends PAUSE.
-        key(R.id.btnPlayPause, "PAUSE")
+        // Round 42: PLAY and PAUSE are separate keys, NOT toggles — the
+        // Samsung key list has KEY_PLAY and KEY_PAUSE and no KEY_PLAYPAUSE,
+        // so the remote has one button per key. (Round 40's single button
+        // sent KEY_PAUSE, which paused but never resumed.)
+        key(R.id.btnPlay, "PLAY")
+        key(R.id.btnPause, "PAUSE")
         findViewById<View>(R.id.btnPower).setOnClickListener { v ->
             Haptics.tick(v, hapticEnabled())
             current?.let { conn.togglePower(it, effectivePower()) }
@@ -143,6 +145,10 @@ class MainActivity : Activity(), TvConnection.Listener {
 
     override fun onResume() {
         super.onResume()
+        // Round 42: app is foregrounded — release TvConnection's
+        // background reconnect hold so the foreground check below (and any
+        // pending retry) may connect.
+        conn.setForeground(true)
         tvs = store.loadTvs()
         apps = store.loadApps()
         // Round 30: universal icon matching — preseeded defaults (and any
@@ -203,6 +209,9 @@ class MainActivity : Activity(), TvConnection.Listener {
 
     override fun onPause() {
         super.onPause()
+        // Round 42: app is backgrounded — TvConnection must not
+        // auto-reconnect while backgrounded; the next onResume reconnects.
+        conn.setForeground(false)
         ui.removeCallbacks(poller)
     }
 
