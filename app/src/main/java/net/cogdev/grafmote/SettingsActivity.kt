@@ -29,7 +29,6 @@ import android.widget.Toast
 import java.util.UUID
 import kotlin.concurrent.thread
 
-/** Manage TVs (nickname + IP/hostname, SSDP scan) and app-launch buttons. */
 class SettingsActivity : Activity() {
 
     private lateinit var store: TvStore
@@ -37,34 +36,29 @@ class SettingsActivity : Activity() {
     private lateinit var appList: LinearLayout
     private var appQueryConn: TvConnection? = null
 
-    /** Round-29 drag state: id + row height captured at drag start, the
-     * hidden original row, plus the visible placeholder marking the
+    /** Drag state: dragged button id, row height captured at drag start,
+     * the hidden original row, and the placeholder marking the
      * would-be insertion point. */
     private var draggedAppId: String? = null
     private var draggedRowHeight: Int = 0
     private var draggedRow: View? = null
     private var dragPlaceholder: View? = null
     /**
-     * Round 32: pending long-jump placeholder index. A move of more than
-     * one slot is applied only when two consecutive hover events agree on
-     * the same destination — a single-frame glitch (e.g. a spurious hit
-     * on the first row mid-drag) is held, never applied.
+     * Pending long-jump placeholder index. A move of more than one slot is
+     * applied only when two consecutive hover events agree on the same
+     * destination — a single-frame glitch is held, never applied.
      */
     private var pendingJumpIndex: Int? = null
     /**
-     * Round 35: settle gate. True from drag start (row GONE + placeholder
-     * inserted at the original index) until the post-insert layout pass
-     * completes. While true, hover events hold the placeholder at its
-     * start slot instead of hit-testing against stale mid-layout geometry
-     * (top-half-of-B reading as "above A" -> index 0).
-     * Round 37: the same gate is re-armed after EVERY placeholder move
-     * (see armSettleGate), so hover events arriving between a move and its
-     * layout pass hold instead of hit-testing stale row geometry.
+     * Settle gate. True from drag start (row GONE + placeholder inserted at
+     * the original index) until the post-insert layout pass completes, and
+     * re-armed after every placeholder move (see armSettleGate). While
+     * true, hover events hold the placeholder at its start slot instead of
+     * hit-testing against stale mid-layout geometry.
      */
     private var dragSettling = false
     private var dragSettleListener: ViewTreeObserver.OnGlobalLayoutListener? = null
 
-    /** ViewHolder for catalog browser rows (row.tag). See showCatalogBrowser. */
     private data class CatalogRow(
         val check: CheckBox,
         val logo: ImageView,
@@ -108,9 +102,8 @@ class SettingsActivity : Activity() {
         }
         appList.removeAllViews()
         val apps = store.loadApps()
-        // Round 30: universal icon matching — backfill any stored button
-        // (preseeded defaults, TV-API adds, manual entries) against the
-        // vendored catalog so matched rows get the catalog logo.
+        // Backfill any stored button against the vendored catalog so
+        // matched rows get the catalog logo.
         try {
             val catalog = AppCatalog.load(this)
             if (catalog.isNotEmpty()) {
@@ -128,11 +121,7 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /**
-     * TV row (round 30): two-line typography — name at 16sp, IP/host line
-     * at 12sp in #808080 gray — plus Edit glyph ONLY. TV rows stay
-     * non-draggable.
-     */
+    /** TV row: name + host lines plus Edit glyph only; TV rows are not draggable. */
     private fun tvRow(name: String, sub: String, onEdit: () -> Unit): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -160,16 +149,11 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /** Round 29 row() kept as a thin alias for the TV row. */
     private fun row(text: String, onEdit: () -> Unit): LinearLayout {
         val parts = text.split("\n", limit = 2)
         return tvRow(parts.getOrElse(0) { text }, parts.getOrElse(1) { "" }, onEdit)
     }
 
-    /**
-     * Round 29: flat Material "edit" pencil (ic_edit) shared by TV and app
-     * rows — plain, matching the simplicity of the other glyphs.
-     */
     private fun editGlyph(onEdit: () -> Unit): ImageView {
         return ImageView(this).apply {
             setImageResource(R.drawable.ic_edit)
@@ -184,20 +168,18 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * App-button row (round 30): the WHOLE row is the drag handle — no
-     * handle glyph (rows aren't tappable, so no gesture conflict). Label is
-     * two-line typography (name 16sp, app ID 12sp #808080 gray) + Edit glyph
-     * ONLY (Delete lives in the edit dialog). The row starts a
-     * drag-and-drop reorder with a placeholder gap: the original row is GONE
-     * (no layout gap) while its shadow is dragged, and a single centralized
-     * hover path on the container snaps the placeholder above/below the
-     * hovered row by pointer half — symmetric in both directions, first
-     * position reachable. TV rows stay non-draggable.
+     * App-button row: the WHOLE row is the drag handle — no handle glyph
+     * (rows aren't tappable, so no gesture conflict). Delete lives in the
+     * edit dialog. The row starts a drag-and-drop reorder with a
+     * placeholder gap: the original row is GONE (no layout gap) while its
+     * shadow is dragged, and a single centralized hover path on the
+     * container snaps the placeholder above/below the hovered row by
+     * pointer half — symmetric in both directions, first position
+     * reachable. TV rows stay non-draggable.
      *
-     * Round 40: a small app logo leads every row — the stored iconUrl via
-     * IconLoader (round-30 catalog enrich already backfilled it), with the
-     * letter tile underneath as the fallback when no logo matches (or while
-     * offline, since the ImageView starts GONE).
+     * A small app logo leads every row — the stored iconUrl via IconLoader,
+     * with the letter tile underneath as the fallback when no logo matches
+     * (or while offline, since the ImageView starts GONE).
      */
     private fun appRow(app: AppButton): LinearLayout {
         val sub = if (app.launchIds().size > 1) {
@@ -243,21 +225,9 @@ class SettingsActivity : Activity() {
                     val shadowView = buildAppRowShadow(app, sub, row)
                     val data = ClipData.newPlainText("app-button", app.id)
                     v.startDragAndDrop(data, AppRowShadow(shadowView, tx, ty), app.id, 0)
-                    // Round 30: the original row is GONE (no layout slot)
-                    // while its shadow is dragged — the placeholder alone
-                    // models the future slot, so the visible list never
-                    // keeps a gap where the row was.
                     row.visibility = View.GONE
-                    // Round 35: insert the placeholder at the dragged row's
-                    // ORIGINAL index — no hit-testing, no 50/50 computation
-                    // at start, so the placeholder always begins exactly
-                    // where the row was regardless of where in the row the
-                    // touch landed. Then gate hover moves until layout
-                    // settles (one-shot global-layout listener, not a
-                    // posted Runnable) so stale mid-layout geometry can't
-                    // jump the placeholder on the first hover frames.
-                    // Round 37: arming lives in armSettleGate(), re-armed
-                    // after every placeholder move for the same hazard.
+                    // Insert the placeholder at the dragged row's ORIGINAL
+                    // index, then hold hover moves until layout settles.
                     pendingJumpIndex = null
                     val ph = ensurePlaceholder()
                     (ph.parent as? ViewGroup)?.removeView(ph)
@@ -273,9 +243,8 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Round 40: small leading logo for an app row — a 40dp square with the
-     * letter tile underneath and the catalog logo on top via IconLoader.
-     * When the button has no iconUrl (no catalog match) the ImageView stays
+     * Small leading logo for an app row — a 40dp square with the letter
+     * tile underneath and the catalog logo on top via IconLoader. When the
      * GONE and the letter shows; when it does, the logo covers the letter
      * once loaded (offline it stays GONE, so the letter is the fallback).
      */
@@ -315,10 +284,9 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Drag shadow (round 30): a detached clone showing the label ONLY (no
-     * handle, no Edit/Delete buttons) over a solid opaque background, drawn
-     * at the touch point passed in from the row.
-     * Round 40: leads with the same logo/letter tile as the row.
+     * Drag shadow: a detached clone showing the label ONLY (no buttons)
+     * over a solid opaque background, drawn at the touch point passed in
+     * from the row. Leads with the same logo/letter tile as the row.
      */
     private fun buildAppRowShadow(app: AppButton, sub: String, row: LinearLayout): View {
         val shadow = LinearLayout(this).apply {
@@ -372,11 +340,11 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Round 36: the placeholder's TOTAL vertical footprint (view height +
-     * top/bottom margins) is EXACTLY the dragged row's measured height, so
-     * inserting or moving it causes zero layout shift in subsequent rows.
-     * The 2dp top/bottom margins are subtracted from the view height to
-     * compensate — height + margins == row height, padding included.
+     * The placeholder's TOTAL vertical footprint (view height + top/bottom
+     * margins) is EXACTLY the dragged row's measured height, so inserting
+     * or moving it causes zero layout shift in subsequent rows. The 2dp
+     * top/bottom margins are subtracted from the view height to compensate
+     * — height + margins == row height, padding included.
      */
     private fun ensurePlaceholder(): View {
         dragPlaceholder?.let { return it }
@@ -395,9 +363,9 @@ class SettingsActivity : Activity() {
                 topMargin = marginTop
                 bottomMargin = marginBottom
             }
-            // Round 29: the placeholder must NEVER act as a hover target —
-            // it consumes drag events in place (DROP still commits) so
-            // hovering it is a no-op and can't relocate it and thrash.
+            // The placeholder must NEVER act as a hover target — it consumes
+            // drag events in place (DROP still commits) so hovering it is a
+            // no-op and can't relocate it.
             setOnDragListener(View.OnDragListener { _, event ->
                 when (event.action) {
                     DragEvent.ACTION_DRAG_STARTED ->
@@ -421,18 +389,17 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Round 30: centralized gapless hover hit-test (coordinates relative to
-     * appList, the container receiving the event). App rows partition the
+     * Centralized gapless hover hit-test (coordinates relative to appList,
+     * the container receiving the event). App rows partition the
      * container's full vertical span into continuous intervals split at the
      * midpoints between consecutive rows — no pixel may belong to no row,
      * so the ~1px dead zone between rows can never throw the placeholder
      * to the bottom. The GONE original row is excluded (it has no slot);
      * touch over the placeholder itself (margins included) is a no-op.
      *
-     * Round 32: HOLD-ON-MISS debounce (the actual thrash fix — gapless
-     * hit-testing above stays as defense in depth). The placeholder moves
-     * ONLY on a confident new hit; every no-confident-hit case holds the
-     * last valid placeholder position and returns without moving it:
+     * HOLD-ON-MISS debounce: the placeholder moves ONLY on a confident new
+     * hit; every no-confident-hit case holds the last valid placeholder
+     * position and returns without moving it:
      * touch over the placeholder itself, touch over no row (above the
      * first row / below the last row), an empty row set, an unreliable
      * mid-layout frame (zero-height rows), a non-finite coordinate, or a
@@ -446,10 +413,7 @@ class SettingsActivity : Activity() {
      */
     private fun handleHover(y: Float) {
         if (draggedAppId == null) return
-        // Round 35: settle gate — hold the start slot until the
-        // post-insert layout pass completes; never hit-test mid-layout.
         if (dragSettling) return
-        // No confident coordinate, no move.
         if (!y.isFinite()) {
             pendingJumpIndex = null
             return
@@ -477,16 +441,12 @@ class SettingsActivity : Activity() {
             return
         }
         rows.sortBy { it.top }
-        // Mid-layout frame with unreliable geometry: hold, don't guess.
         for (c in rows) {
             if (c.height <= 0 || c.bottom <= c.top) {
                 pendingJumpIndex = null
                 return
             }
         }
-        // Touch above the first row or below the last row is over no row:
-        // hold the last valid position instead of snapping to an end.
-        // (Both ends stay reachable by hovering the end rows themselves.)
         val contentTop = rows.first().top
         val contentBottom = rows.last().bottom
         if (y < contentTop || y > contentBottom) {
@@ -508,9 +468,6 @@ class SettingsActivity : Activity() {
             }
         }
         if (target == null) {
-            // Gapless hit-test missed: HOLD — never fall through to a
-            // default slot (that default is what snapped the placeholder
-            // to position 0 for single frames mid-drag).
             pendingJumpIndex = null
             return
         }
@@ -518,12 +475,9 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Round 32: debounced placeholder move. Adjacent (<=1 slot) moves apply
-     * instantly so normal dragging feels identical; a distant jump applies
-     * only when two consecutive hover events agree on the same destination
-     * insertion index, which kills single-frame thrash (e.g. ph@3 -> ph@0
-     * -> ph@1 while the finger drags steadily downward) regardless of
-     * which dead pixel or spurious coordinate caused the bad frame.
+     * Debounced placeholder move: adjacent (<=1 slot) moves apply
+     * instantly; a distant jump applies only when two consecutive hover
+     * events agree on the same destination insertion index.
      */
     private fun movePlaceholderDebounced(target: View, above: Boolean) {
         val ph = dragPlaceholder
@@ -538,7 +492,7 @@ class SettingsActivity : Activity() {
         idx = idx.coerceIn(0, appList.childCount)
         if (current >= 0 && idx == current) {
             pendingJumpIndex = null
-            return // already there: no-op
+            return
         }
         if (current < 0 || kotlin.math.abs(idx - current) <= 1) {
             pendingJumpIndex = null
@@ -554,13 +508,12 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Round 29: placeholder snapping — above the hovered row when the
-     * touch is on its top 50%, below it on the bottom 50%. The target
-     * index is computed in placeholder-excluded space, so re-hovering the
-     * slot the placeholder already models is a no-op instead of a
-     * remove+re-add layout thump.
-     * Round 37: after an actual move, re-arm the settle gate — hover
-     * events arriving before the move's layout pass hold instead of
+     * Placeholder snapping — above the hovered row when the touch is on
+     * its top 50%, below it on the bottom 50%. The target index is computed
+     * in placeholder-excluded space, so re-hovering the slot the
+     * placeholder already models is a no-op instead of a remove+re-add
+     * layout thump. After an actual move, the settle gate is re-armed —
+     * hover events arriving before the move's layout pass hold instead of
      * hit-testing stale row geometry.
      */
     private fun movePlaceholder(target: View, above: Boolean) {
@@ -570,16 +523,15 @@ class SettingsActivity : Activity() {
         if (idx < 0) return
         if (current >= 0 && idx > current) idx--
         if (!above) idx++
-        if (idx == current) return // already there: no-op
+        if (idx == current) return
         (ph.parent as? ViewGroup)?.removeView(ph)
         appList.addView(ph, idx.coerceIn(0, appList.childCount))
         armSettleGate()
     }
 
     /**
-     * Round 37: one-shot settle-gate arming, extracted from the drag-start
-     * path and reused after every placeholder move. Sets [dragSettling]
-     * until the next layout pass completes; hover events hold while set
+     * One-shot settle-gate arming, extracted from the drag-start path and
+     * reused after every placeholder move. Sets [dragSettling] until the
      * (see handleHover). Replaces any previously armed listener so at
      * most one is ever registered. At most one frame of hold per move —
      * drag feel is otherwise identical.
@@ -638,8 +590,8 @@ class SettingsActivity : Activity() {
         draggedAppId = null
         draggedRowHeight = 0
         pendingJumpIndex = null
-        // Round 30: un-hide the GONE original row (commitDrop() re-renders
-        // right after, so this only matters for cancelled drags).
+        // Un-hide the original row (matters for cancelled drags;
+        // commitDrop() re-renders right after).
         draggedRow?.visibility = View.VISIBLE
         draggedRow = null
     }
@@ -669,25 +621,23 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Round 30: the container is the ONLY hover target — rows carry no
-     * drag listeners of their own. Every LOCATION hit-tests by
-     * gapless coordinates (handleHover), so no pixel belongs to no row.
+     * The container is the ONLY hover target — rows carry no drag
+     * listeners of their own. Every LOCATION hit-tests by gapless
+     * coordinates (handleHover), so no pixel belongs to no row.
      *
-     * Round 32: touches outside the row span (including past-the-last-row)
-     * HOLD the last valid placeholder position instead of resolving to an
-     * end slot — the ends stay reachable by hovering the end rows, and a
-     * drop past the last row commits the held (append) position.
+     * Touches outside the row span (including past-the-last-row) HOLD the
+     * last valid placeholder position instead of resolving to an end slot —
+     * the ends stay reachable by hovering the end rows, and a drop past the
+     * last row commits the held (append) position.
      *
-     * Round 39: ACTION_DRAG_ENTERED never drives the hit-test — it
-     * carries y=0.0 on child→parent re-entry (proven by logcat tag
-     * GrafDND: drag exiting the placeholder, which swallows events with
-     * its own listener, then re-entering the container delivers ENTERED
-     * with y=0.0, which hit-tests to the first row above=true and
-     * applies an instant adjacent 1→0 move for one frame before the next
-     * real LOCATION recovers). Only ACTION_DRAG_LOCATION carries real
-     * coordinates. This loses nothing: round 35 already places the
-     * placeholder at the dragged row's original index at drag start, and
-     * every subsequent real position arrives via LOCATION.
+     * ACTION_DRAG_ENTERED never drives the hit-test — it carries y=0.0 on
+     * child→parent re-entry (exiting the placeholder, which swallows events
+     * with its own listener, then re-entering the container delivers ENTERED
+     * with y=0.0, which would hit-test to the first row for one frame before
+     * the next real LOCATION recovers). Only ACTION_DRAG_LOCATION carries
+     * real coordinates. This loses nothing: the placeholder is already
+     * placed at the dragged row's original index at drag start, and every
+     * subsequent real position arrives via LOCATION.
      */
     private fun appListDropListener(): View.OnDragListener {
         return View.OnDragListener { _, event ->
@@ -714,12 +664,6 @@ class SettingsActivity : Activity() {
 
     private fun hint(text: String) = TextView(this).apply { this.text = text }
 
-    /**
-     * Add/edit TV dialog (round 30): fields in the content view, actions as
-     * AlertDialog positive (Save) / negative (Cancel) / neutral (Delete in
-     * edit mode only) buttons — no hand-built action rows. The window wraps
-     * to its contents, never full-height.
-     */
     private fun tvDialog(existing: Tv?) {
         val nick = EditText(this).apply {
             hint = "Nickname (e.g. Living Room)"
@@ -792,17 +736,15 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * "Add app" flow: query the currently selected TV's installed-app list
-     * over the remote-control WebSocket (ed.installedApp.get emit; see
+     * "Add app" flow: query the TV's installed-app list over the
+     * remote-control WebSocket (ed.installedApp.get emit; see
      * TvConnection.queryInstalledApps), show real names in a multi-select
      * dialog, and add the chosen ones with their IDs. Actually-installed
-     * apps win whenever the TV answers.
-     *
-     * Round 21: when the TV doesn't answer (older firmware — "unavailable",
-     * not an error) or reports nothing, fall through to the searchable
-     * vendored catalog browser (name + logo rows, multi-select) instead of
-     * leaving only manual entry. Manual app-ID entry stays as the final
-     * fallback everywhere.
+     * apps win whenever the TV answers. When the TV doesn't answer (older
+     * firmware — "unavailable", not an error) or reports nothing, fall
+     * through to the searchable vendored catalog browser instead of leaving
+     * only manual entry. Manual app-ID entry stays as the final fallback
+     * everywhere.
      */
     private fun addAppFlow() {
         val tvs = store.loadTvs()
@@ -819,9 +761,9 @@ class SettingsActivity : Activity() {
         val target = store.lastTvId()?.let { id -> tvs.firstOrNull { it.id == id } }
             ?: tvs.first()
 
-        // Round 28: never scan when the TV is offline — a quick REST probe
-        // decides; offline goes straight to the catalog with an offline
-        // notice, no WebSocket query is ever kicked off.
+        // Never scan when the TV is offline — a quick REST probe decides;
+        // offline goes straight to the catalog, no WebSocket query is ever
+        // kicked off.
         val checking = AlertDialog.Builder(this)
             .setTitle("Add apps")
             .setMessage("Checking ${target.nick}…")
@@ -845,7 +787,6 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /** Round 28: lightweight offline probe — plain REST GET, short timeouts. */
     private fun isTvReachable(host: String): Boolean {
         var conn: java.net.HttpURLConnection? = null
         return try {
@@ -861,7 +802,6 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /** Round 28: the online half of addAppFlow — WebSocket installed-app query. */
     private fun queryTvApps(target: Tv) {
         val loading = AlertDialog.Builder(this)
             .setTitle("Add apps")
@@ -885,8 +825,6 @@ class SettingsActivity : Activity() {
             conn.close()
             if (appQueryConn === conn) appQueryConn = null
             if (found == null) {
-                // TV didn't answer (older firmware): catalog browser carries
-                // the retry + manual-entry fallbacks inside.
                 showCatalogBrowser(
                     "Couldn't get apps from ${target.nick} — " +
                         "the TV didn't answer (older firmware doesn't respond)."
@@ -899,10 +837,6 @@ class SettingsActivity : Activity() {
             }
             val names = found.map { it.name }.toTypedArray()
             val checked = BooleanArray(found.size)
-            // Round 30: the TV results dialog also offers the catalog
-            // browser (neutral button) — a working TV query no longer hides
-            // the catalog. Manual entry stays one tap away inside the
-            // catalog browser.
             AlertDialog.Builder(this)
                 .setTitle("Add apps from ${target.nick}")
                 .setMultiChoiceItems(names, checked) { _, which, isChecked ->
@@ -921,8 +855,8 @@ class SettingsActivity : Activity() {
                         if (checked[i] && !have.contains(info.appId) &&
                             all.none { it.launchIds().contains(info.appId) }
                         ) {
-                            // Round 30: TV-API adds match the catalog by
-                            // name or app ID so they get the logo tile.
+                            // TV-API adds match the catalog by name or app ID
+                            // so they get the logo tile.
                             val match = AppCatalog.findMatch(catalog, info.name, info.appId)
                             val ids = if (match != null) {
                                 (listOf(info.appId) + match.ids).distinct()
@@ -945,17 +879,17 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Searchable catalog browser (round 21): name + logo rows with
-     * multi-select over the vendored res/raw catalog. [notice] explains why
-     * the catalog is showing instead of the TV's own list (null when the
-     * user chose the catalog directly). Picks store the primary ID, all
+     * Searchable catalog browser: name + logo rows with multi-select over
+     * the vendored res/raw catalog. [notice] explains why the catalog is
+     * showing instead of the TV's own list (null when the user chose the
+     * catalog directly). Picks store the primary ID, all
      * fallback IDs, and the icon URL. Manual entry stays one tap away, and
      * the TV query can be retried from here.
      */
     private fun showCatalogBrowser(notice: String?) {
         val catalog = AppCatalog.load(this)
         if (catalog.isEmpty()) {
-            // Vendored parse failed (shouldn't happen): manual entry only.
+            // Catalog unavailable: manual entry only.
             appDialog(null)
             return
         }
@@ -1007,8 +941,7 @@ class SettingsActivity : Activity() {
             override fun getItemId(pos: Int): Long = pos.toLong()
             // ViewHolder cached in row.tag: IconLoader tracks its URL via a
             // keyed tag and never touches the plain tag, so recycled rows
-            // always resolve their views (previously findViewWithTag("logo")
-            // returned null after loadInto overwrote the "logo" tag).
+            // always resolve their views.
             override fun getView(pos: Int, convertView: View?, parent: ViewGroup?): View {
                 val app = visible[pos]
                 val row: LinearLayout
@@ -1105,7 +1038,6 @@ class SettingsActivity : Activity() {
             .setNegativeButton("Cancel", null)
             .create()
         dialog.show()
-        // Round 30: wrap to content height — never full-height.
         dialog.window?.setLayout(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1113,12 +1045,9 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Add/edit app-button dialog (round 30): fields in the content view,
-     * actions as AlertDialog positive (Save) / negative (Cancel) / neutral
-     * (Delete in edit mode only) buttons — no hand-built action rows.
-     * Manual entries are matched against the vendored catalog by name or
-     * app ID so they get the catalog logo + fallback IDs. The window wraps
-     * to its contents, never full-height.
+     * Add/edit app-button dialog. Manual entries are matched against the
+     * vendored catalog by name or app ID so they get the catalog logo +
+     * fallback IDs.
      */
     private fun appDialog(existing: AppButton?) {
         val label = EditText(this).apply {
@@ -1212,7 +1141,6 @@ class SettingsActivity : Activity() {
                 }
             }
         }
-        // Round 29: fit/wrap to contents — never stretch full height.
         dialog.window?.setLayout(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT

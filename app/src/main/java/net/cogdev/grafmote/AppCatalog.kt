@@ -4,8 +4,8 @@ import android.content.Context
 import org.json.JSONArray
 
 /**
- * Curated app catalog (round 21): fallback for TVs whose firmware never
- * answers the ed.installedApp.get WebSocket query (round 20).
+ * Curated app catalog: fallback for TVs whose firmware never
+ * answers the ed.installedApp.get WebSocket query.
  *
  * The JSON lives vendored at res/raw/app_catalog.json (~7KB) — no runtime
  * dependency on any website. Each entry carries fallback IDs in launch
@@ -13,14 +13,14 @@ import org.json.JSONArray
  * best-effort enhancement (see IconLoader); tiles work fully offline.
  */
 data class CatalogApp(val name: String, val ids: List<String>, val icon: String) {
-    /** Primary ID: the first fallback ID, used for dedup and display. */
+    /** The first fallback ID, used for dedup and display. */
     val primaryId: String get() = ids.firstOrNull() ?: ""
 }
 
 object AppCatalog {
     @Volatile private var cached: List<CatalogApp>? = null
 
-    /** Parsed catalog, cached in memory. Cheap (~7KB); never throws. */
+    /** Parsed catalog, cached in memory; never throws. */
     fun load(ctx: Context): List<CatalogApp> {
         cached?.let { return it }
         val parsed = try {
@@ -61,9 +61,9 @@ object AppCatalog {
     }
 
     /**
-     * Round 30: universal icon matching — match any app button against the
-     * catalog by Samsung app ID (any fallback ID, case-insensitive) or by
-     * name (case-insensitive exact). ID match wins over name match.
+     * Match an app button against the catalog by Samsung app ID (any
+     * fallback ID, case-insensitive) or by name (case-insensitive exact).
+     * ID match wins over name match.
      */
     fun findMatch(catalog: List<CatalogApp>, name: String, appId: String): CatalogApp? {
         val n = name.trim()
@@ -78,9 +78,9 @@ object AppCatalog {
     }
 
     /**
-     * Round 30: backfill a stored button from its catalog match — fills a
-     * blank iconUrl with the catalog logo and merges catalog fallback IDs
-     * behind the button's own primary ID. Returns true when mutated.
+     * Backfill a stored button from its catalog match — fills a blank
+     * iconUrl with the catalog logo and merges catalog fallback IDs behind
+     * the button's own primary ID. Returns true when mutated.
      */
     fun enrichButton(app: AppButton, catalog: List<CatalogApp>): Boolean {
         val match = findMatch(catalog, app.label, app.appId) ?: return false

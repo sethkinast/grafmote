@@ -75,10 +75,10 @@ class MainActivity : Activity(), TvConnection.Listener {
 
         tvSpinner = findViewById(R.id.tvSpinner)
         statusDot = findViewById(R.id.statusDot)
-        // Round 40: the whole pill is one touch target — taps on the LED,
-        // the label, or the chevron all open the selector. The pill's
-        // selector background gives the single consistent pressed state;
-        // the spinner keeps its own touch handling for its own area.
+        // The whole pill is one touch target — taps on the LED, the label,
+        // or the chevron all open the selector. The pill's selector
+        // background gives the single consistent pressed state; the spinner
+        // keeps its own touch handling for its own area.
         findViewById<View>(R.id.tvPill).setOnClickListener { tvSpinner.performClick() }
         appsRow = findViewById(R.id.appsRow)
         appsScroll = findViewById(R.id.appsScroll)
@@ -86,25 +86,22 @@ class MainActivity : Activity(), TvConnection.Listener {
         appsRowTop = findViewById(R.id.appsRowTop)
         appsRowBottom = findViewById(R.id.appsRowBottom)
 
-        // D-pad ring
         key(R.id.btnUp, "UP")
         key(R.id.btnDown, "DOWN")
         key(R.id.btnLeft, "LEFT")
         key(R.id.btnRight, "RIGHT")
         key(R.id.btnOk, "ENTER")
-        // Back/Home live inside the ring's dead space now.
+        // Back/Home live inside the ring's dead space.
         key(R.id.btnBack, "RETURN")
         key(R.id.btnHome, "HOME")
-        // Bottom row: volume rocker, mute + play/pause, channel rocker.
         key(R.id.btnMute, "MUTE")
         key(R.id.btnVolUp, "VOLUP")
         key(R.id.btnVolDown, "VOLDOWN")
         key(R.id.btnChUp, "CHUP")
         key(R.id.btnChDown, "CHDOWN")
-        // Round 42: PLAY and PAUSE are separate keys, NOT toggles — the
-        // Samsung key list has KEY_PLAY and KEY_PAUSE and no KEY_PLAYPAUSE,
-        // so the remote has one button per key. (Round 40's single button
-        // sent KEY_PAUSE, which paused but never resumed.)
+        // PLAY and PAUSE are separate keys, NOT toggles — the Samsung key
+        // list has KEY_PLAY and KEY_PAUSE and no play/pause toggle key, so
+        // the remote has one button per key.
         key(R.id.btnPlay, "PLAY")
         key(R.id.btnPause, "PAUSE")
         findViewById<View>(R.id.btnPower).setOnClickListener { v ->
@@ -137,23 +134,21 @@ class MainActivity : Activity(), TvConnection.Listener {
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
 
-        // Warm the vendored app catalog off the UI thread (round 21): the
-        // ~7KB res/raw parse costs ~1ms but stays off the cold-start path
+        // Warm the vendored app catalog off the UI thread: the ~7KB
+        // res/raw parse costs ~1ms but stays off the cold-start path
         // entirely; tiles only need the stored iconUrl, never the catalog.
         thread { AppCatalog.load(this) }
     }
 
     override fun onResume() {
         super.onResume()
-        // Round 42: app is foregrounded — release TvConnection's
-        // background reconnect hold so the foreground check below (and any
-        // pending retry) may connect.
+        // Foregrounded — release the background reconnect hold so the
+        // foreground check below (and any pending retry) may connect.
         conn.setForeground(true)
         tvs = store.loadTvs()
         apps = store.loadApps()
-        // Round 30: universal icon matching — preseeded defaults (and any
-        // icon-less stored button) pick up the catalog logo on first sight
-        // so fresh installs get logo tiles without visiting settings.
+        // Backfill any icon-less stored button against the catalog so it
+        // picks up the logo on first sight.
         try {
             val catalog = AppCatalog.load(this)
             if (catalog.isNotEmpty()) {
@@ -167,17 +162,17 @@ class MainActivity : Activity(), TvConnection.Listener {
         }
         buildSpinner()
         buildAppButtons()
-        // Foreground kick (round 19): same-TV foregrounding keeps the
-        // last-known LED/state and silently re-checks via foregroundCheck —
-        // no stale "disconnected" flash while the check is in flight, and no
+        // Foreground kick: same-TV foregrounding keeps the last-known
+        // LED/state and silently re-checks via foregroundCheck — no stale
+        // "disconnected" flash while the check is in flight, and no
         // user-visible error. Full switch only when the target actually
         // changed (first start, TV added/removed/reselected in settings).
         val last = store.lastTvId()?.let { id -> tvs.firstOrNull { it.id == id } }
         val target = last ?: tvs.firstOrNull()
         if (target != null) {
-            // Cold-start sync (round 41): buildSpinner() ran while current
-            // was still null, so the spinner sits at position 0. Pin it to
-            // the resolved target now; lastSpinnerPos silences the async
+            // Cold-start sync: buildSpinner() ran while current was still
+            // null, so the spinner sits at position 0. Pin it to the
+            // resolved target now; lastSpinnerPos silences the async
             // setSelection callback via the existing check.
             val pos = tvs.indexOfFirst { it.id == target.id }.takeIf { it >= 0 }
             if (pos != null) {
@@ -209,8 +204,8 @@ class MainActivity : Activity(), TvConnection.Listener {
 
     override fun onPause() {
         super.onPause()
-        // Round 42: app is backgrounded — TvConnection must not
-        // auto-reconnect while backgrounded; the next onResume reconnects.
+        // Backgrounded — no auto-reconnect while backgrounded; the next
+        // onResume reconnects.
         conn.setForeground(false)
         ui.removeCallbacks(poller)
     }
@@ -221,9 +216,9 @@ class MainActivity : Activity(), TvConnection.Listener {
     }
 
     /**
-     * Remote keys are NEVER gated on connection state (round 19): every tap
-     * attempts to send — TvConnection queues the frame and kicks an
-     * immediate reconnect when the socket is down.
+     * Remote keys are NEVER gated on connection state: every tap attempts
+     * to send — TvConnection queues the frame and kicks an immediate
+     * reconnect when the socket is down.
      */
     private fun key(viewId: Int, samsungKey: String) {
         findViewById<View>(viewId).setOnClickListener { v ->
@@ -266,9 +261,9 @@ class MainActivity : Activity(), TvConnection.Listener {
     }
 
     /**
-     * App tiles (round 26): 1-8 tiles wrap to up to two centered rows of 4
+     * App tiles: 1-8 tiles wrap to up to two centered rows of 4
      * (1-4 = one row; 5-8 = 4 on row 1 + remainder centered on row 2);
-     * 9+ fall back to today's horizontally scrolling single row. The
+     * 9+ fall back to the horizontally scrolling single row. The
      * visible container wraps its height to content.
      */
     private fun buildAppButtons() {
@@ -311,17 +306,16 @@ class MainActivity : Activity(), TvConnection.Listener {
     }
 
     private fun tileLp(): LinearLayout.LayoutParams {
-        // Round 28: equal margin on all sides — 9dp side margins minus 2dp
-        // = 7dp, with vertical set to match.
+        // Equal margin on all sides — 9dp side margins minus 2dp = 7dp,
+        // with vertical set to match.
         val s = dp(87)
         return LinearLayout.LayoutParams(s, s).apply { setMargins(dp(7), dp(7), dp(7), dp(7)) }
     }
 
     /**
-     * App tile (round 26): buttons without a stored logo are today's
-     * text-only tile, byte-for-byte the same look and behavior. Buttons with
-     * a logo are FULL-BLEED: the image fills the tile edge-to-edge with no
-     * text label and no padding (CENTER_CROP, clipped to the same 15dp
+     * App tile: buttons without a stored logo are a text-only tile. Buttons
+     * with a logo are FULL-BLEED: the image fills the tile edge-to-edge
+     * with no text label and no padding (CENTER_CROP, clipped to the same 15dp
      * rounded face). Same size, same btn_face_selector background (so the
      * pressed state selector is unchanged), same tap behavior (tries every
      * fallback ID in order, per-TV winner first). A translucent pressed
@@ -347,9 +341,9 @@ class MainActivity : Activity(), TvConnection.Listener {
         val icon = app.iconUrl?.trim().orEmpty()
         if (icon.isEmpty()) {
             // Square-ish rounded tiles with the same top-right-light gradient.
-            // Round 40: single line with end-ellipsis, centered — multi-word
-            // names (e.g. "CBS News") never wrap, so they stay vertically
-            // centered exactly like single-word ones.
+            // Single line with end-ellipsis, centered — multi-word names
+            // (e.g. "CBS News") never wrap, so they stay vertically centered
+            // exactly like single-word ones.
             return Button(this).apply {
                 text = app.label
                 textSize = 14f
@@ -387,7 +381,7 @@ class MainActivity : Activity(), TvConnection.Listener {
         return tile
     }
 
-    // ---- TvConnection.Listener (already on main thread) ----
+    // TvConnection.Listener callbacks arrive on the main thread.
 
     override fun onConnState(tv: Tv?, state: TvConnection.State, detail: String) {
         if (tv != null && tv.id != current?.id) return
@@ -400,7 +394,6 @@ class MainActivity : Activity(), TvConnection.Listener {
             current?.let { conn.refreshInfo(it) { p -> power = p } }
         }
         renderStatus()
-        // Transient states surface as brief toasts on transitions only.
         if (state != was) {
             when (state) {
                 TvConnection.State.WAITING_APPROVAL ->
@@ -426,7 +419,6 @@ class MainActivity : Activity(), TvConnection.Listener {
     private fun effectivePower() =
         if (power == "on" || connState == TvConnection.State.OPEN) "on" else power
 
-    /** Two-state LED: green = socket open, red = anything else. */
     private fun renderStatus() {
         val dot = if (connState == TvConnection.State.OPEN) DOT_GREEN else DOT_RED
         statusDot.backgroundTintList = ColorStateList.valueOf(dot)
