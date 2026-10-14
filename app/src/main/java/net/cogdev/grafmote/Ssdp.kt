@@ -51,11 +51,9 @@ object Ssdp {
     private const val SWEEP_WALL_CAP_MS = 9000L
 
     /**
-     * Keys always present in a genuine Samsung api/v2 "device" object
-     * (ground truth: the Hubitat driver reads PowerState / wifiMac /
-     * TokenAuthSupport / model / duid). Random port-8001 responders
-     * (printers, cameras, routers) return non-JSON or JSON without a Samsung
-     * "device" object and are never listed.
+     * Keys identifying a genuine Samsung api/v2 "device" object. Random
+     * port-8001 responders (printers, cameras, routers) return non-JSON or
+     * JSON without a Samsung "device" object and are never listed.
      */
     private val SAMSUNG_KEYS = setOf(
         "duid", "id", "model", "modelName",
@@ -71,12 +69,10 @@ object Ssdp {
         val selfIp = wifiIpInt(wifi)
         if (selfIp == null) return ScanResult(emptyList(), noWifi = true)
 
-        // Fast SSDP first pass (multicast lock held only for this phase).
         val ssdpFound = withMulticastLock(wifi) { ssdpScan(SSDP_FIRST_PASS_MS) }
-        // Primary mechanism: active sweep of the phone's /24.
         val swept = sweep(selfIp, onProgress)
 
-        // Merge, one entry per IP. Prefer a real friendly name over a bare IP.
+        // Prefer a real friendly name over a bare IP.
         val merged = LinkedHashMap<String, Found>()
         for (f in ssdpFound) merged[f.ip] = f
         for (f in swept) {
@@ -103,8 +99,6 @@ object Ssdp {
         // 0 means no WiFi association (mobile data, WiFi off, airplane mode).
         return if (ip == 0) null else ip
     }
-
-    // ---- Subnet sweep (primary) ----
 
     // NOTE (subnet size): LANs larger than /24 (e.g. /23 or /16) are
     // deliberately NOT fully probed — thousands of hosts would blow the ~10s
@@ -200,8 +194,6 @@ object Ssdp {
         return if (stripped.isEmpty()) raw else stripped
     }
 
-    // ---- SSDP first pass (cheap, best-effort) ----
-
     private inline fun <T> withMulticastLock(wifi: WifiManager?, block: () -> T): T {
         val lock = try {
             wifi?.createMulticastLock("GrafRemoteSsdp")?.apply {
@@ -257,7 +249,6 @@ object Ssdp {
                         locations.add(it.trim())
                     }
                 } catch (_: java.net.SocketTimeoutException) {
-                    // keep listening until the deadline
                 }
             }
         } catch (e: Exception) {

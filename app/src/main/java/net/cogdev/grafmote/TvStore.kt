@@ -25,12 +25,11 @@ data class Tv(
 )
 
 /**
- * App-launch button (round 21): [appId] is the primary launch ID;
- * [appIds] holds every fallback ID in launch order (catalog entries carry
- * several — e.g. regional variants — and launch tries each until one
- * succeeds). Buttons stored before round 21 only have [appId], which loads
- * as a single-element [appIds]. [iconUrl] is a nullable Samsung CDN PNG;
- * null/blank means a text-only tile.
+ * App-launch button: [appId] is the primary launch ID; [appIds] holds every
+ * fallback ID in launch order (catalog entries carry several — e.g.
+ * regional variants — and launch tries each until one succeeds). Buttons
+ * with only [appId] load as a single-element [appIds]. [iconUrl] is a
+ * nullable Samsung CDN PNG; null/blank means a text-only tile.
  */
 data class AppButton(
     val id: String,
@@ -55,7 +54,7 @@ class TvStore(ctx: Context) {
         ctx.applicationContext.getSharedPreferences("graf_remote", Context.MODE_PRIVATE)
 
     /**
-     * Serializes every whole-list TV write (round 41): updateToken/updateMeta
+     * Serializes every whole-list TV write: updateToken/updateMeta
      * run load-modify-save from background threads while Settings' saveTvs
      * runs on the main thread — without a common lock a background save can
      * land between Settings' load and save and be clobbered (or vice versa).
@@ -63,8 +62,6 @@ class TvStore(ctx: Context) {
      * writes are atomic with respect to each other.
      */
     private val tvsLock = Any()
-
-    // ---- TVs ----
 
     fun loadTvs(): MutableList<Tv> {
         val out = mutableListOf<Tv>()
@@ -163,11 +160,11 @@ class TvStore(ctx: Context) {
         prefs.edit().putString("lastTv", id).apply()
     }
 
-    // ---- Per-TV winning app-ID memory (round 22) ----
+    // ---- Per-TV winning app-ID memory ----
     //
-    // Round 21 launches try every fallback ID until one answers HTTP 200,
-    // but a 2021 TV and a 2024 TV can need different IDs for the same app.
-    // So the ID that last worked is remembered PER (TV, button): tvId ->
+    // Launches try every fallback ID until one answers HTTP 200, but
+    // different TV models can need different IDs for the same app. So the
+    // ID that last worked is remembered PER (TV, button): tvId ->
     // (appButtonId -> winning Samsung appId), persisted as one JSON string
     // alongside the other prefs. Winners are overwritten on every success,
     // so a stale winner simply falls through to the fallbacks and the new
@@ -203,7 +200,7 @@ class TvStore(ctx: Context) {
         }
     }
 
-    // ---- App-launch buttons (global list, v1) ----
+    // ---- App-launch buttons (global list) ----
 
     fun loadApps(): MutableList<AppButton> {
         if (!prefs.contains("apps")) {
@@ -251,12 +248,9 @@ class TvStore(ctx: Context) {
     }
 
     private fun defaultApps(): List<AppButton> = listOf(
-        // Round 40: Seth's four verified defaults, in order. Jellyfin ID
-        // from the official jellyfin-tizen config.xml; the rest verified
-        // working on the target TV. Fresh installs only (loadApps seeds
-        // when no "apps" pref exists — never clobbers user config).
-        // Logos resolve via the round-30 catalog enrich on first sight;
-        // an ID with no catalog match keeps the letter-tile fallback.
+        // Fresh installs only: seeds when no stored list exists, never
+        // overwrites user config. Logos resolve via catalog matching on
+        // first sight; unmatched IDs keep the letter-tile fallback.
         AppButton(UUID.randomUUID().toString(), "Jellyfin", "AprZAARz4r.Jellyfin"),
         AppButton(UUID.randomUUID().toString(), "Disney+", "3201901017640"),
         AppButton(UUID.randomUUID().toString(), "PBS Kids", "Rk72oKFsRS.OtterKidsProd"),

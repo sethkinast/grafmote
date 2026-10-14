@@ -16,7 +16,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
 
 /**
- * Minimal logo loader (round 21): deliberately hand-rolled instead of Coil
+ * Minimal logo loader: deliberately hand-rolled instead of Coil
  * or another image framework — the icons are ~198px PNGs and this is ~100
  * lines with zero new dependencies, no ContentProviders, and no cold-start
  * cost (disk + executor are created lazily on first use, off the UI thread).
@@ -25,7 +25,7 @@ import java.util.concurrent.ThreadFactory
  * network (HttpURLConnection, short timeouts). The Samsung CDN icon URL is
  * the ONLY non-LAN traffic the app ever makes, and it is purely best-effort:
  * offline, slow, or missing logos leave the ImageView GONE, so the tile
- * falls back to today's text-only look, unchanged and fully tappable.
+ * falls back to the text-only look, unchanged and fully tappable.
  */
 object IconLoader {
     private val main = Handler(Looper.getMainLooper())
@@ -62,7 +62,6 @@ object IconLoader {
             }
         } catch (_: Exception) {
         }
-        // Text-only until the logo arrives (or forever, when offline).
         view.setImageDrawable(null)
         view.visibility = View.GONE
         exec.execute { fetchInBackground(view, url) }
