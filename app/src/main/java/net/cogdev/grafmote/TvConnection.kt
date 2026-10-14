@@ -46,7 +46,10 @@ import javax.net.ssl.X509TrustManager
  *   GET http://<ip>:8001/api/v2/applications/list DOES NOT EXIST (404s).
  *   Some firmware never answers; that is "unavailable", not an error.
  * - Power on: Wake-on-LAN magic packet (UDP 255.255.255.255:7, hex
- *   FFFFFFFFFFFF + 16x MAC) then KEY_POWER Press, wait ~3s, Release.
+ *   FFFFFFFFFFFF + 16x MAC) — WoL alone IS the power-on; no KEY_POWER
+ *   frame is sent with it (KEY_POWER is a toggle and a queued pair would
+ *   flush after boot as a second power event). A one-shot KEY_POWER Click
+ *   fallback fires only if the socket never handshakes (see togglePower).
  *   Power off: KEY_POWER Click. Power state: REST device.PowerState.
  *
  * No SmartThings cloud. LAN only.
@@ -100,6 +103,18 @@ class TvConnection(private val store: TvStore) {
         .build()
 
     @Volatile private var activeTvId: String? = null
+    /**
+     * Round 43: live reference to the active TV for the foreground retry
+     * loop (B2). Updated everywhere [activeTvId] is set; cleared on close.
+     * Read fresh by each retry tick — never captured across ticks.
+     */
+    @Volatile private var activeTv: Tv? = null
+    /**
+     * Round 43: bumped whenever the foreground retry loop is (re)started
+     * or must stop, so a stale scheduled tick never fires. Touched on
+     * [exec] only (like [generation]/[wolGen]).
+     */
+    private var retryGen = 0
     @Volatile private var socket: WebSocket? = null
     @Volatile private var connState: State = State.IDLE
     /** Bumped on every (re)connect so a stale scheduled reconnect never fires. */
@@ -142,6 +157,18 @@ class TvConnection(private val store: TvStore) {
     /** Round 42: foreground flag — see [foreground]. Default true. */
     fun setForeground(fg: Boolean) {
         foreground = fg
+        exec.execute {
+            if (!fg) {
+                // Round 43 B2: stop the foreground retry loop. The next
+                // tick would see foreground==false and stop anyway; bumping
+                // here is the clean teardown. No auto-reconnect while
+                // backgrounded (round 42 contract, unchanged).
+                retryGen++
+            } else {
+                val tv = activeTv
+                if (tv != null) startForegroundRetryLocked()
+            }
+        }
     }
 
     /** Switch the active TV: drop the old socket, connect to the new one. */
@@ -158,6 +185,7 @@ class TvConnection(private val store: TvStore) {
             sawConnectEvent = false
             authStrikes = 0
             activeTvId = tv?.id
+            activeTv = tv
             if (tv == null) {
                 setState(null, State.IDLE, "No TV configured")
             } else {
@@ -193,6 +221,7 @@ class TvConnection(private val store: TvStore) {
     private fun sendKeyLocked(tv: Tv, frame: String) {
         if (activeTvId != tv.id) {
             activeTvId = tv.id
+            activeTv = tv
             generation++
             sawConnectEvent = false
             authStrikes = 0
@@ -262,24 +291,35 @@ class TvConnection(private val store: TvStore) {
                 sawConnectEvent = false
                 authStrikes = 0
                 activeTvId = tv.id
+                activeTv = tv
                 connectLocked(tv)
+                startForegroundRetryLocked()
                 return@execute
             }
+            activeTv = tv
             reconnectNowLocked(tv)
+            startForegroundRetryLocked()
         }
     }
 
     /**
      * Power toggle. lastPower comes from the REST poll ("on"/"off"/"unknown").
-     * TV on  -> KEY_POWER Click (off). Anything else -> WoL + Press/Release (on).
-     * Buttons are never gated: Press/Release queue and fire when the socket
-     * opens. Never blocks the exec thread (the old Thread.sleep stalled all
-     * queued keys and scheduled reconnects); Release is scheduled instead.
+     * TV on  -> one KEY_POWER Click (off). Anything else -> WoL only (on):
+     * Wake-on-LAN alone is a complete power-on for these TVs, and KEY_POWER
+     * is a toggle — a Press/Release pair queued while the socket is down
+     * would flush at handshake, seconds after boot, landing as a second
+     * power event that can toggle a freshly booted TV back toward
+     * off/panel-off. So no POWER frame of any kind is sent on the initial
+     * power-on action; only a one-shot KEY_POWER Click fallback 15s later,
+     * and only if the socket never handshook by then (last-resort wake for
+     * a TV that woke its board but not its panel — it queues and flushes on
+     * handshake, which is intended that late). Buttons are never gated.
      */
     fun togglePower(tv: Tv, lastPower: String) {
         exec.execute {
             if (activeTvId != tv.id) {
                 activeTvId = tv.id
+                activeTv = tv
                 generation++
                 wolGen++
                 sawConnectEvent = false
@@ -295,14 +335,20 @@ class TvConnection(private val store: TvStore) {
                 sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
             } else {
                 sendWol(tv.wifiMac)
-                sendKeyLocked(tv, buildKeyFrame("POWER", "Press"))
                 // Aggressive reconnect loop until the TV accepts the socket —
                 // never relies on the passive poll timer to notice boot.
                 startWolLoopLocked(tv)
-                // Mirror the driver: hold POWER Press ~3s then Release.
+                // Late fallback: if nothing handshook within 15s the TV may
+                // have woken its board but not its panel — send one Click.
+                // Generation/activeTvId guard so a TV switch or close
+                // cancels it. If the socket is OPEN by then, send nothing.
+                val gen = generation
                 exec.schedule({
-                    if (tv.id == activeTvId) sendKeyLocked(tv, buildKeyFrame("POWER", "Release"))
-                }, 3, TimeUnit.SECONDS)
+                    if (gen != generation) return@schedule
+                    if (tv.id != activeTvId) return@schedule
+                    if (connState == State.OPEN || sawConnectEvent) return@schedule
+                    sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
+                }, 15, TimeUnit.SECONDS)
             }
         }
     }
@@ -516,6 +562,7 @@ class TvConnection(private val store: TvStore) {
     private fun sendEmitLocked(tv: Tv, frame: String) {
         if (activeTvId != tv.id) {
             activeTvId = tv.id
+            activeTv = tv
             generation++
             sawConnectEvent = false
             authStrikes = 0
@@ -586,6 +633,8 @@ class TvConnection(private val store: TvStore) {
         exec.execute {
             generation++
             wolGen++
+            retryGen++
+            activeTv = null
             try {
                 socket?.close(1000, "close")
             } catch (_: Exception) {
@@ -657,6 +706,44 @@ class TvConnection(private val store: TvStore) {
         }, 2, TimeUnit.SECONDS)
     }
 
+    /**
+     * Round 43 B2: foreground retry loop. Replaces the single-shot nature
+     * of foreground recovery with a repeating 10s tick while foregrounded:
+     * as long as the socket is not OPEN (and no attempt/prompt is in
+     * flight), kick a reconnect. Stops when backgrounded, when there is no
+     * active TV, or when the socket opens. CONNECTING ticks reschedule
+     * untouched (the B1 watchdog owns wedged attempts), as do
+     * WAITING_APPROVAL ticks with a live socket (approval prompt pending).
+     * Sits alongside scheduleReconnect (whose 2s foreground-gated contract
+     * is unchanged). Started from setForeground(true) and foregroundCheck;
+     * [retryGen] guards against duplicate loops. Runs on exec.
+     */
+    private fun startForegroundRetryLocked() {
+        retryGen++
+        val my = retryGen
+        fun tick() {
+            exec.schedule({
+                if (my != retryGen) return@schedule
+                if (!foreground) return@schedule
+                val cur = activeTv
+                if (cur == null || cur.id != activeTvId) return@schedule
+                if (connState == State.OPEN) return@schedule
+                if (connState == State.CONNECTING) {
+                    tick()
+                    return@schedule
+                }
+                if (connState == State.WAITING_APPROVAL && socket != null) {
+                    tick()
+                    return@schedule
+                }
+                Log.d(TAG, "foreground retry: reconnecting")
+                reconnectNowLocked(cur)
+                tick()
+            }, 10, TimeUnit.SECONDS)
+        }
+        tick()
+    }
+
     private fun connectLocked(tv: Tv) {
         // Round 41: every attempt starts with no handshake seen — direct sends
         // stay queued until ms.channel.connect (see onOpen/onMessage).
@@ -680,6 +767,27 @@ class TvConnection(private val store: TvStore) {
         val slot = tv.id
         val listener = TvSocket(tv, slot)
         socket = wsClient.newWebSocket(Request.Builder().url(url).build(), listener)
+        // Round 43 B1: CONNECTING watchdog — if the attempt wedges (neither
+        // ms.channel.connect nor a state change resolves it within 8s), tear
+        // it down and let the normal 2s path retry. The strict
+        // state==CONNECTING check keeps it from ever touching a
+        // WAITING_APPROVAL flow, an OPEN socket, or an already-failed
+        // attempt (onGone/onFailure moved state on). Each attempt schedules
+        // its own watchdog, so the retry cycle is bounded to ~10s.
+        val gen = generation
+        exec.schedule({
+            if (gen != generation) return@schedule
+            if (tv.id != activeTvId) return@schedule
+            if (connState != State.CONNECTING) return@schedule
+            Log.d(TAG, "watchdog: CONNECTING attempt wedged after 8s, tearing down")
+            try {
+                socket?.close(1000, "watchdog")
+            } catch (_: Exception) {
+            }
+            socket = null
+            setState(tv, State.IDLE, "Reconnecting…")
+            scheduleReconnect(tv)
+        }, 8, TimeUnit.SECONDS)
     }
 
     private inner class TvSocket(val tv: Tv, val slot: String) : WebSocketListener() {
