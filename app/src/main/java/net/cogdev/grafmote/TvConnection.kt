@@ -1000,14 +1000,17 @@ class TvConnection(private val store: TvStore) {
             packet.fill(0xFF.toByte(), 0, 6)
             for (i in 0 until 16) System.arraycopy(macBytes, 0, packet, 6 + i * 6, 6)
             val sock = DatagramSocket()
-            sock.broadcast = true
-            sock.send(
-                DatagramPacket(
-                    packet, packet.size,
-                    InetAddress.getByName("255.255.255.255"), 7
-                )
-            )
-            sock.close()
+            try {
+                sock.broadcast = true
+                val dest = InetAddress.getByName("255.255.255.255")
+                // Broadcast is lossy; the packet is idempotent so send a small volley.
+                repeat(3) { i ->
+                    if (i > 0) Thread.sleep(250)
+                    sock.send(DatagramPacket(packet, packet.size, dest, 7))
+                }
+            } finally {
+                sock.close()
+            }
         } catch (e: Exception) {
             Log.d(TAG, "sendWol failed: ${e.message}")
         }
