@@ -27,13 +27,14 @@ import kotlin.concurrent.thread
  * connect + poll in the background.
  * No custom Application class, no ContentProviders, no DI, no Compose.
  *
- * Header shows each TV once (in the selector) with a two-state LED dot:
- * green = socket open (connected), red = anything else. TV-off and
- * unreachable are indistinguishable from the phone, so there is no third
- * state. Transient states (connecting / approval prompts) surface as brief
- * toasts on state transitions only — there is no persistent status text.
- * The LED is truthful but never gates input: every button always attempts
- * to send, kicking an immediate reconnect when the socket is down.
+ * Header shows each TV once (in the selector) with a three-state LED dot:
+ * green = socket open (fully live), gray = socket not open but REST reports
+ * a power state (standby/wakeable, or on and still connecting), red = no
+ * positive signal at all. Transient states (connecting / approval prompts)
+ * surface as brief toasts on state transitions only — there is no
+ * persistent status text. The LED is truthful but never gates input: every
+ * button always attempts to send, kicking an immediate reconnect when the
+ * socket is down.
  */
 class MainActivity : Activity(), TvConnection.Listener {
 
@@ -106,7 +107,7 @@ class MainActivity : Activity(), TvConnection.Listener {
         key(R.id.btnPause, "PAUSE")
         findViewById<View>(R.id.btnPower).setOnClickListener { v ->
             Haptics.tick(v, hapticEnabled())
-            current?.let { conn.togglePower(it, effectivePower()) }
+            current?.let { conn.togglePower(it) }
                 ?: toast("Add a TV first (gear icon)")
         }
         findViewById<View>(R.id.btnSettings).setOnClickListener { v ->
@@ -411,16 +412,12 @@ class MainActivity : Activity(), TvConnection.Listener {
         renderStatus()
     }
 
-    /**
-     * Power reading for the toggle only (the LED is socket state, not power).
-     * A successful remote-control WebSocket connection proves the TV is on, so
-     * OPEN overrides a stale or failed ("unknown") REST poll.
-     */
-    private fun effectivePower() =
-        if (power == "on" || connState == TvConnection.State.OPEN) "on" else power
-
     private fun renderStatus() {
-        val dot = if (connState == TvConnection.State.OPEN) DOT_GREEN else DOT_RED
+        val dot = when {
+            connState == TvConnection.State.OPEN -> DOT_GREEN
+            power == "on" || power == "off" -> DOT_GRAY
+            else -> DOT_RED
+        }
         statusDot.backgroundTintList = ColorStateList.valueOf(dot)
     }
 
@@ -444,6 +441,7 @@ class MainActivity : Activity(), TvConnection.Listener {
 
     companion object {
         private const val DOT_GREEN = 0xFF34C759.toInt()
+        private const val DOT_GRAY = 0xFF8E8E93.toInt()
         private const val DOT_RED = 0xFFFF453A.toInt()
     }
 }
