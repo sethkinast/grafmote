@@ -48,7 +48,7 @@ import javax.net.ssl.X509TrustManager
  *   FFFFFFFFFFFF + 16x MAC) — WoL alone IS the power-on; no KEY_POWER
  *   frame is sent with it (KEY_POWER is a toggle and a queued pair would
  *   flush after boot as a second power event). A one-shot KEY_POWER Click
- *   fallback fires only if the socket never handshakes (see togglePower).
+ *   fallback fires only if the socket never handshakes (see powerOnLocked).
  *   Power off: KEY_POWER Click. Power state: REST device.PowerState.
  *
  * No SmartThings cloud. LAN only.
@@ -120,6 +120,15 @@ class TvConnection(private val store: TvStore) {
     private var generation = 0
     /** Bumped to cancel the WoL aggressive-reconnect loop (TV switch/close). */
     private var wolGen = 0
+    /** Last REST power reading for the active TV; touched on [exec] only. */
+    private var lastRestPower = "unknown"
+    /**
+     * One cold-start power toggle waiting for a definitive signal.
+     * Touched on [exec] only; the generation and TV id make stale
+     * resolutions and deadlines no-op.
+     */
+    private class PendingPower(val tvId: String, val gen: Int)
+    private var pendingPower: PendingPower? = null
     private data class QueuedFrame(val frame: String, val enqueuedAtMs: Long)
     /**
      * Touched on [exec] (enqueue/clear) AND on OkHttp's reader thread
@@ -182,6 +191,8 @@ class TvConnection(private val store: TvStore) {
             authStrikes = 0
             activeTvId = tv?.id
             activeTv = tv
+            lastRestPower = "unknown"
+            pendingPower = null
             if (tv == null) {
                 setState(null, State.IDLE, "No TV configured")
             } else {
@@ -225,6 +236,8 @@ class TvConnection(private val store: TvStore) {
             } catch (_: Exception) {
             }
             socket = null
+            lastRestPower = "unknown"
+            pendingPower = null
             connectLocked(tv)
         }
         val ws = socket
@@ -287,6 +300,8 @@ class TvConnection(private val store: TvStore) {
                 authStrikes = 0
                 activeTvId = tv.id
                 activeTv = tv
+                lastRestPower = "unknown"
+                pendingPower = null
                 connectLocked(tv)
                 startForegroundRetryLocked()
                 return@execute
@@ -298,19 +313,14 @@ class TvConnection(private val store: TvStore) {
     }
 
     /**
-     * Power toggle. lastPower comes from the REST poll ("on"/"off"/"unknown").
-     * TV on  -> one KEY_POWER Click (off). Anything else -> WoL only (on):
-     * Wake-on-LAN alone is a complete power-on for these TVs, and KEY_POWER
-     * is a toggle — a Press/Release pair queued while the socket is down
-     * would flush at handshake, seconds after boot, landing as a second
-     * power event that can toggle a freshly booted TV back toward
-     * off/panel-off. So no POWER frame of any kind is sent on the initial
-     * power-on action; only a one-shot KEY_POWER Click fallback 15s later,
-     * and only if the socket never handshook by then (last-resort wake for
-     * a TV that woke its board but not its panel — it queues and flushes on
-     * handshake, which is intended that late). Buttons are never gated.
+     * Power toggle. The effective state is the live socket (OPEN proves the
+     * TV is on) or, failing that, the last REST reading for the active TV.
+     * "on"  -> one KEY_POWER Click (off).
+     * "off" -> WoL power-on (see [powerOnLocked]).
+     * "unknown" -> never guess: arm one pending toggle, refresh REST and
+     *   reconnect, then let the first definitive signal resolve it.
      */
-    fun togglePower(tv: Tv, lastPower: String) {
+    fun togglePower(tv: Tv) {
         exec.execute {
             if (activeTvId != tv.id) {
                 activeTvId = tv.id
@@ -324,28 +334,93 @@ class TvConnection(private val store: TvStore) {
                 } catch (_: Exception) {
                 }
                 socket = null
+                lastRestPower = "unknown"
+                pendingPower = null
                 connectLocked(tv)
             }
-            if (lastPower == "on") {
-                sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
-            } else {
-                sendWol(tv.wifiMac)
-                // Aggressive reconnect loop until the TV accepts the socket —
-                // never relies on the passive poll timer to notice boot.
-                startWolLoopLocked(tv)
-                // Late fallback: if nothing handshook within 15s the TV may
-                // have woken its board but not its panel — send one Click.
-                // Generation/activeTvId guard so a TV switch or close
-                // cancels it. If the socket is OPEN by then, send nothing.
-                val gen = generation
-                exec.schedule({
-                    if (gen != generation) return@schedule
-                    if (tv.id != activeTvId) return@schedule
-                    if (connState == State.OPEN || sawConnectEvent) return@schedule
-                    sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
-                }, 15, TimeUnit.SECONDS)
+            // One pending toggle per TV: repeats coalesce into the action
+            // already in flight instead of stacking a second one.
+            if (pendingPower?.tvId == tv.id) return@execute
+            when (if (connState == State.OPEN) "on" else lastRestPower) {
+                "on" -> sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
+                "off" -> powerOnLocked(tv)
+                else -> armPendingPowerLocked(tv)
             }
         }
+    }
+
+    /**
+     * Arm the one deferred toggle. A fresh REST read and an immediate
+     * reconnect race to resolve it; the deadline falls back to WoL, which
+     * wakes an off TV and is a no-op on an on one — never a blind toggle.
+     */
+    private fun armPendingPowerLocked(tv: Tv) {
+        val token = PendingPower(tv.id, generation)
+        pendingPower = token
+        refreshInfo(tv)
+        reconnectNowLocked(tv)
+        exec.schedule({
+            if (pendingPower !== token) return@schedule
+            if (token.gen != generation) return@schedule
+            if (tv.id != activeTvId) return@schedule
+            if (connState == State.OPEN) {
+                pendingPower = null
+                sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
+            } else {
+                pendingPower = null
+                powerOnLocked(tv)
+            }
+        }, 10, TimeUnit.SECONDS)
+    }
+
+    /** REST answer for the active TV resolves a pending toggle. Runs on exec. */
+    private fun resolvePendingPowerLocked(tv: Tv, power: String) {
+        val token = pendingPower ?: return
+        if (token.tvId != tv.id || token.gen != generation || tv.id != activeTvId) return
+        // OPEN outranks a REST reading that raced the handshake.
+        when (if (connState == State.OPEN) "on" else power) {
+            "on" -> {
+                pendingPower = null
+                sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
+            }
+            "off" -> {
+                pendingPower = null
+                powerOnLocked(tv)
+            }
+        }
+    }
+
+    /** ms.channel.connect proves the TV is on. Runs on exec. */
+    private fun resolvePendingPowerOnOpenLocked(tv: Tv) {
+        val token = pendingPower ?: return
+        if (token.tvId != tv.id || token.gen != generation || tv.id != activeTvId) return
+        pendingPower = null
+        sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
+    }
+
+    /**
+     * Power-on path: WoL alone is a complete power-on for these TVs, and
+     * KEY_POWER is a toggle — a Press/Release pair queued while the socket
+     * is down would flush at handshake, seconds after boot, landing as a
+     * second power event that can toggle a freshly booted TV back toward
+     * off/panel-off. So no POWER frame of any kind is sent on the initial
+     * power-on action; only a one-shot KEY_POWER Click fallback 15s later,
+     * and only if the socket never handshook by then (last-resort wake for
+     * a TV that woke its board but not its panel — it queues and flushes on
+     * handshake, which is intended that late). Runs on exec.
+     */
+    private fun powerOnLocked(tv: Tv) {
+        sendWol(tv.wifiMac)
+        // Aggressive reconnect loop until the TV accepts the socket —
+        // never relies on the passive poll timer to notice boot.
+        startWolLoopLocked(tv)
+        val gen = generation
+        exec.schedule({
+            if (gen != generation) return@schedule
+            if (tv.id != activeTvId) return@schedule
+            if (connState == State.OPEN || sawConnectEvent) return@schedule
+            sendKeyLocked(tv, buildKeyFrame("POWER", "Click"))
+        }, 15, TimeUnit.SECONDS)
     }
 
     /**
@@ -404,9 +479,15 @@ class TvConnection(private val store: TvStore) {
             }
             Log.d(TAG, "refreshInfo ${tv.host} PowerState raw='$raw' -> '$power'")
             val p = power
-            main.post {
-                listener?.onPower(tv, p)
-                cb?.invoke(p)
+            exec.execute {
+                if (tv.id == activeTvId) {
+                    lastRestPower = p
+                    resolvePendingPowerLocked(tv, p)
+                }
+                main.post {
+                    listener?.onPower(tv, p)
+                    cb?.invoke(p)
+                }
             }
         }
     }
@@ -564,6 +645,8 @@ class TvConnection(private val store: TvStore) {
             } catch (_: Exception) {
             }
             socket = null
+            lastRestPower = "unknown"
+            pendingPower = null
             connectLocked(tv)
         }
         val ws = socket
@@ -634,6 +717,8 @@ class TvConnection(private val store: TvStore) {
             }
             socket = null
             synchronized(pending) { pending.clear() }
+            lastRestPower = "unknown"
+            pendingPower = null
         }
     }
 
@@ -880,6 +965,8 @@ class TvConnection(private val store: TvStore) {
                     // approval — the TV accepts remote frames only after
                     // ms.channel.connect. Stale entries (>10s) are dropped.
                     flushPendingLocked(ws)
+                    // Pending-toggle state lives on exec.
+                    exec.execute { resolvePendingPowerOnOpenLocked(tv) }
                 }
             } catch (_: Exception) {
             }
