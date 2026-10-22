@@ -398,7 +398,11 @@ class MainActivity : Activity(), TvConnection.Listener {
         if (state != was) {
             when (state) {
                 TvConnection.State.WAITING_APPROVAL ->
-                    toast(connDetail.ifBlank { "Approve \"Grafmote\" on the TV, then tap again" })
+                    // Only a TV that is awake can show an actionable prompt;
+                    // a standby timeout/unauthorized must not cry wolf.
+                    if (power == "on") {
+                        toast(connDetail.ifBlank { "Approve \"Grafmote\" on the TV, then tap again" })
+                    }
                 TvConnection.State.UNREACHABLE ->
                     toast(connDetail.ifBlank { "TV may be off — Power still sends WoL" })
                 else -> {}
