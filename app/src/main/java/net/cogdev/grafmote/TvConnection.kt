@@ -120,8 +120,12 @@ class TvConnection(private val store: TvStore) {
     private var generation = 0
     /** Bumped to cancel the WoL aggressive-reconnect loop (TV switch/close). */
     private var wolGen = 0
-    /** Last REST power reading for the active TV; touched on [exec] only. */
-    private var lastRestPower = "unknown"
+    /**
+     * Last REST power reading for the active TV; written on [exec] only,
+     * but read on OkHttp's reader thread to suppress standby channel
+     * events — volatile like [authStrikes].
+     */
+    @Volatile private var lastRestPower = "unknown"
     /**
      * One cold-start power toggle waiting for a definitive signal.
      * Touched on [exec] only; the generation and TV id make stale
@@ -920,6 +924,12 @@ class TvConnection(private val store: TvStore) {
                 // issues a fresh one. No automatic reconnect here — retries
                 // happen on foreground/key-tap (see onGone's strike guard).
                 if (ev.equals("ms.channel.unauthorized", ignoreCase = true)) {
+                    // A standby TV's channel layer answers before it evaluates
+                    // the token, so this rejection carries no auth meaning.
+                    if (lastRestPower == "off") {
+                        Log.d(TAG, "token: ms.channel.unauthorized in standby, suppressed tokenPresent=${tv.token.isNotEmpty()} tokenLen=${tv.token.length} strikes=$authStrikes")
+                        return
+                    }
                     authStrikes++
                     Log.d(TAG, "token: ms.channel.unauthorized tokenPresent=${tv.token.isNotEmpty()} tokenLen=${tv.token.length} strikes=$authStrikes")
                     if (authStrikes >= 2) {
@@ -941,6 +951,9 @@ class TvConnection(private val store: TvStore) {
                     // A timeout is NOT an auth rejection — never a strike,
                     // never clears the token.
                     Log.d(TAG, "token: ms.channel.timeout tokenPresent=${tv.token.isNotEmpty()} tokenLen=${tv.token.length}")
+                    // Same standby caveat as unauthorized: leave the attempt
+                    // CONNECTING for the watchdog/failure paths to resolve.
+                    if (lastRestPower == "off") return
                     sawConnectEvent = false
                     setState(
                         tv, State.WAITING_APPROVAL,
