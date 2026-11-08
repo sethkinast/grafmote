@@ -3,6 +3,7 @@ name: Build APK
 on:
   push:
     branches: [master]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -92,3 +93,32 @@ jobs:
           body: Automated build from commit ${{ github.sha }}.
           files: |
             grafmote-*.apk
+
+  # Versioned release: pushing a v* tag builds the signed release APK and
+  # publishes it as a full (non-prerelease) GitHub release on that tag,
+  # with the APK attached as grafmote.apk (as v1.0.0 was). The rolling
+  # `latest` prerelease is untouched on tag pushes (publish is gated to
+  # master). If the release secrets are missing the job fails rather than
+  # publishing an empty release.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, build-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: grafmote-release
+          path: ./artifacts/release
+      - name: Rename APK
+        run: |
+          mv ./artifacts/release/*.apk ./grafmote.apk
+          ls -l ./*.apk
+      - name: Publish versioned release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          prerelease: false
+          name: ${{ github.ref_name }}
+          files: grafmote.apk
