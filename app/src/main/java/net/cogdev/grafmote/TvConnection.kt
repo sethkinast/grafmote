@@ -448,6 +448,40 @@ class TvConnection(private val store: TvStore) {
         }
     }
 
+    /**
+     * Runs [launch] now if the TV is on, or wakes it first if not.
+     * "On" is a live socket or a REST reading of "on"; anything else
+     * ("off" or "unknown") counts as not-on — an off TV gives no REST
+     * signal at all on these TVs, so waiting for a positive "off"
+     * would mean never waking. When not-on, sends WoL (plus the
+     * reconnect loop, as power-on does) and runs [launch] after a
+     * fixed 2s, exactly once, with no retry if the TV is still
+     * booting. When on, [launch] runs immediately with no WoL and no
+     * delay. [launch] itself must enqueue its blocking work on
+     * netExec and must always invoke its callback, including on the
+     * stale-TV path below, so the tile in MainActivity is re-enabled.
+     * Runs on exec.
+     */
+    private fun launchWithWake(tv: Tv, cb: ((ok: Boolean) -> Unit)?, launch: () -> Unit) {
+        exec.execute {
+            if (connState == State.OPEN || lastRestPower == "on") {
+                launch()
+                return@execute
+            }
+            powerOnWoLOnlyLocked(tv)
+            val gen = generation
+            exec.schedule({
+                if (gen != generation || tv.id != activeTvId) {
+                    // TV switched or connection closed while waiting:
+                    // do not launch on the wrong TV; release the tile.
+                    main.post { cb?.invoke(false) }
+                    return@schedule
+                }
+                launch()
+            }, 2, TimeUnit.SECONDS)
+        }
+    }
+
     /** Launch an app via HTTP POST. */
     fun launchApp(tv: Tv, appId: String, cb: ((ok: Boolean) -> Unit)? = null) {
         launchApp(tv, listOf(appId), cb)
@@ -456,21 +490,25 @@ class TvConnection(private val store: TvStore) {
     /**
      * Launch trying each ID in order until one answers HTTP 200:
      * catalog entries carry fallback IDs — regional/firmware variants of the
-     * same app. Single-ID buttons behave exactly as before.
+     * same app. Single-ID buttons behave exactly as before. If the TV is
+     * not on, WoL is sent first and the POSTs run 2s later (see
+     * [launchWithWake]); no retry if the TV is still booting.
      */
     fun launchApp(tv: Tv, appIds: List<String>, cb: ((ok: Boolean) -> Unit)? = null) {
         val ordered = appIds.filter { it.isNotBlank() }.distinct()
-        // Blocking POSTs on netExec — never the command thread.
-        netExec.execute {
-            var ok = false
-            for (id in ordered) {
-                if (postLaunch(tv, id)) {
-                    ok = true
-                    break
+        launchWithWake(tv, cb) {
+            // Blocking POSTs on netExec — never the command thread.
+            netExec.execute {
+                var ok = false
+                for (id in ordered) {
+                    if (postLaunch(tv, id)) {
+                        ok = true
+                        break
+                    }
                 }
+                val r = ok
+                main.post { cb?.invoke(r) }
             }
-            val r = ok
-            main.post { cb?.invoke(r) }
         }
     }
 
@@ -481,6 +519,8 @@ class TvConnection(private val store: TvStore) {
      * the new winner for (T, B), overwriting any previous one — so a stale
      * winner falls through to the fallbacks and the replacement sticks.
      * No-winner buttons behave exactly like the winner-less overload above.
+     * If the TV is not on, WoL is sent first and the POSTs run 2s later
+     * (see [launchWithWake]); no retry if the TV is still booting.
      */
     fun launchApp(tv: Tv, buttonId: String, appIds: List<String>, cb: ((ok: Boolean) -> Unit)? = null) {
         val base = appIds.filter { it.isNotBlank() }.distinct()
@@ -494,21 +534,23 @@ class TvConnection(private val store: TvStore) {
         } else {
             base
         }
-        // Blocking POSTs on netExec — never the command thread.
-        netExec.execute {
-            var ok = false
-            for (id in ordered) {
-                if (postLaunch(tv, id)) {
-                    ok = true
-                    try {
-                        store.setWinningAppId(tv.id, buttonId, id)
-                    } catch (_: Exception) {
+        launchWithWake(tv, cb) {
+            // Blocking POSTs on netExec — never the command thread.
+            netExec.execute {
+                var ok = false
+                for (id in ordered) {
+                    if (postLaunch(tv, id)) {
+                        ok = true
+                        try {
+                            store.setWinningAppId(tv.id, buttonId, id)
+                        } catch (_: Exception) {
+                        }
+                        break
                     }
-                    break
                 }
+                val r = ok
+                main.post { cb?.invoke(r) }
             }
-            val r = ok
-            main.post { cb?.invoke(r) }
         }
     }
 
